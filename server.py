@@ -446,6 +446,21 @@ async def handle_proxy_completion(
     if "max_completion_tokens" in body and "max_tokens" not in completion_kwargs:
         completion_kwargs["max_tokens"] = body["max_completion_tokens"]
 
+    # Prevent 400 context overflow (input tokens + max_output_tokens > context_length)
+    if "max_tokens" in completion_kwargs:
+        models_list = await fetch_openrouter_models(api_key)
+        if models_list:
+            matched_model = next((m for m in models_list if m.get("id", "").lower() == selected_model.lower()), None)
+            if matched_model and matched_model.get("context_length"):
+                ctx_limit = matched_model["context_length"]
+                # Estimate prompt tokens (~3.5 chars per token + message structure overhead)
+                prompt_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, dict))
+                estimated_prompt_tokens = (prompt_chars // 3) + (len(messages) * 10) + 50
+                if completion_kwargs["max_tokens"] + estimated_prompt_tokens > ctx_limit:
+                    safe_max = max(256, ctx_limit - estimated_prompt_tokens - 100)
+                    logger.info(f"Clamping max_tokens from {completion_kwargs['max_tokens']} to {safe_max} to fit context {ctx_limit}")
+                    completion_kwargs["max_tokens"] = safe_max
+
     # Stream flag
     stream = body.get("stream", False)
     if "stream" in url_config:
@@ -1325,17 +1340,24 @@ async def web_dashboard(request: Request):
     function applyModelAdaptations(model, preserveValues = false) {
       if (!model) return;
 
-      // 1. Max Output Tokens
-      const maxCompletion = model.top_provider?.max_completion_tokens || 
-                            model.per_request_limits?.max_tokens || 
-                            (model.context_length ? Math.min(model.context_length, 32768) : 8192);
+      // 1. Max Output Tokens: ensure safe headroom so (input + output) <= context_length
+      const ctxLength = model.context_length || 8192;
+      let rawLimit = model.top_provider?.max_completion_tokens || model.per_request_limits?.max_tokens;
+      
+      let maxCompletion;
+      if (rawLimit && rawLimit < ctxLength) {
+        maxCompletion = rawLimit;
+      } else {
+        // Reserve at least 4,096 tokens headroom for the input prompt
+        maxCompletion = Math.max(1024, ctxLength - 4096);
+      }
       
       const maxTokInput = document.getElementById('input-maxtok');
       const maxTokLabel = document.getElementById('lbl-maxtok-limit');
       
       maxTokInput.max = maxCompletion;
       if (!preserveValues) {
-        maxTokInput.value = maxCompletion; // JUMP TO MAX ALLOWED!
+        maxTokInput.value = maxCompletion; // JUMP TO SAFE MAX!
       }
       maxTokLabel.textContent = `(max: ${maxCompletion.toLocaleString()})`;
 
