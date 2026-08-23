@@ -87,11 +87,22 @@ fi
 echo "🚀 Loading launchd agent..."
 launchctl load -w "${PLIST_DEST}"
 
-# Wait for startup
-sleep 2
+# 8. Verify Server Readiness & Health
+echo "⏳ Waiting for server to become ready on http://localhost:${PORT}..."
+MAX_ATTEMPTS=15
+ATTEMPT=0
+SERVER_READY=false
 
-# 8. Verify Status
-if launchctl list | grep -q "${SERVICE_LABEL}"; then
+while [ ${ATTEMPT} -lt ${MAX_ATTEMPTS} ]; do
+    if curl -s "http://127.0.0.1:${PORT}/api/health" &>/dev/null; then
+        SERVER_READY=true
+        break
+    fi
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep 1
+done
+
+if [ "${SERVER_READY}" = true ]; then
     echo ""
     echo "========================================================"
     echo "🎉 OpenRouter Proxy Daemon successfully installed & active!"
@@ -108,7 +119,13 @@ if launchctl list | grep -q "${SERVICE_LABEL}"; then
     echo "  ./manage.sh stop     - Stop daemon"
     echo "  ./uninstall.sh       - Completely remove daemon"
     echo "========================================================"
+    
+    # Automatically open configuration dashboard in default browser
+    if command -v open &>/dev/null; then
+        echo "🚀 Opening configuration dashboard in browser..."
+        open "http://localhost:${PORT}"
+    fi
 else
-    echo "⚠️ Warning: Service was loaded, but not listed in launchctl list."
+    echo "⚠️ Warning: Service was loaded, but health endpoint did not respond within ${MAX_ATTEMPTS}s."
     echo "Check logs at: ${LOG_DIR}/stderr.log"
 fi

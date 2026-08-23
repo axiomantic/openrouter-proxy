@@ -408,6 +408,56 @@ async def get_models(refresh: bool = False):
     return {"data": models, "count": len(models)}
 
 
+# Cache for model endpoints/providers
+MODEL_ENDPOINTS_CACHE: Dict[str, Any] = {}
+
+async def fetch_model_endpoints(model_id: str, api_key: Optional[str] = None) -> List[str]:
+    """Fetch supported provider names for a specific model."""
+    if model_id in MODEL_ENDPOINTS_CACHE:
+        return MODEL_ENDPOINTS_CACHE[model_id]
+
+    headers = {}
+    key = api_key or os.getenv("OPENROUTER_API_KEY", "")
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{OPENROUTER_BASE_URL}/models/{model_id}/endpoints", headers=headers)
+            if resp.status_code == 200:
+                endpoints_data = resp.json().get("data", {}).get("endpoints", [])
+                providers = []
+                for ep in endpoints_data:
+                    p_name = ep.get("provider_name")
+                    if not p_name and ep.get("name"):
+                        p_name = ep.get("name").split("|")[0].strip()
+                    if p_name and p_name not in providers:
+                        providers.append(p_name)
+                
+                # If no sub-providers listed (e.g. Anthropic native), use the author/org
+                if not providers and "/" in model_id:
+                    author = model_id.split("/")[0].capitalize()
+                    providers.append(author)
+
+                MODEL_ENDPOINTS_CACHE[model_id] = providers
+                return providers
+    except Exception as e:
+        logger.error(f"Error fetching endpoints for {model_id}: {e}")
+
+    # Fallback to model author
+    fallback = [model_id.split("/")[0].capitalize()] if "/" in model_id else []
+    return fallback
+
+
+@app.get("/api/models/{model_author}/{model_slug}/endpoints")
+@app.get("/api/models/{model_slug}/endpoints")
+async def get_model_endpoints(model_slug: str, model_author: Optional[str] = None, request: Request = None):
+    """Retrieve actual supported providers for a specific model."""
+    model_id = f"{model_author}/{model_slug}" if model_author else model_slug
+    providers = await fetch_model_endpoints(model_id, get_api_key(request) if request else None)
+    return {"model": model_id, "providers": providers}
+
+
 @app.get("/v1/models")
 @app.get("/p/{config_path:path}/v1/models")
 @app.get("/cfg/{b64_config}/v1/models")
@@ -554,6 +604,15 @@ async def web_dashboard(request: Request):
       color: var(--text);
       font-weight: 500;
     }
+    .param-note {
+      font-size: 13px;
+      font-family: var(--sans);
+      font-weight: 400;
+    }
+    .note-disabled { color: var(--text-subtle); }
+    .note-supported { color: #4ade80; }
+    .note-reasoning { color: #a78bfa; }
+
     input[type="text"], input[type="number"], select {
       width: 100%;
       background: var(--input-bg);
@@ -564,7 +623,12 @@ async def web_dashboard(request: Request):
       padding: 10px 14px;
       border-radius: 6px;
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, opacity 0.15s;
+    }
+    input:disabled, select:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      border-color: #222228;
     }
     input[type="text"]:focus, input[type="number"]:focus, select:focus {
       border-color: var(--border-focus);
@@ -575,6 +639,10 @@ async def web_dashboard(request: Request):
       accent-color: var(--text);
       background: transparent;
       cursor: pointer;
+    }
+    input[type="range"]:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
 
     /* Model select list */
@@ -726,9 +794,6 @@ async def web_dashboard(request: Request):
       white-space: pre-wrap;
     }
 
-    /* Hidden element */
-    .hidden { display: none !important; }
-
     /* Toast */
     #toast {
       position: fixed;
@@ -778,25 +843,37 @@ async def web_dashboard(request: Request):
       <div class="params-grid">
         <!-- Temperature -->
         <div id="wrapper-temp">
-          <label>Temperature <span id="lbl-temp">0.7</span></label>
+          <label>
+            <span>Temperature</span>
+            <span id="lbl-temp-note" class="param-note"><span id="lbl-temp">0.7</span></span>
+          </label>
           <input type="range" id="input-temp" min="0" max="2" step="0.05" value="0.7">
         </div>
 
         <!-- Top P -->
         <div id="wrapper-topp">
-          <label>Top P <span id="lbl-topp">1.0</span></label>
+          <label>
+            <span>Top P</span>
+            <span id="lbl-topp-note" class="param-note"><span id="lbl-topp">1.0</span></span>
+          </label>
           <input type="range" id="input-topp" min="0" max="1" step="0.05" value="1.0">
         </div>
 
-        <!-- Max Output Tokens (Dynamically bounded by model) -->
+        <!-- Max Output Tokens (Jumps automatically to model limit) -->
         <div id="wrapper-maxtok">
-          <label>Max Output Tokens <span id="lbl-maxtok-limit" style="font-size: 13px; color: var(--text-subtle);">(max: 8192)</span></label>
-          <input type="number" id="input-maxtok" min="1" max="8192" step="256" value="4096">
+          <label>
+            <span>Max Output Tokens</span>
+            <span id="lbl-maxtok-limit" class="param-note note-supported">(max: 8,192)</span>
+          </label>
+          <input type="number" id="input-maxtok" min="1" max="8192" step="256" value="8192">
         </div>
 
-        <!-- Reasoning Effort (Visible ONLY if supported by model) -->
-        <div id="wrapper-reasoning" class="hidden">
-          <label>Reasoning Effort <span style="font-size: 12px; color: #a78bfa;">CoT Supported</span></label>
+        <!-- Reasoning Effort (Disabled if not supported) -->
+        <div id="wrapper-reasoning">
+          <label>
+            <span>Reasoning Effort</span>
+            <span id="lbl-reasoning-note" class="param-note note-reasoning">Supported</span>
+          </label>
           <select id="input-reasoning">
             <option value="none">Default (None)</option>
             <option value="low">Low</option>
@@ -806,34 +883,18 @@ async def web_dashboard(request: Request):
         </div>
       </div>
 
-      <!-- Provider Order Preference (Draggable & Dropdown) -->
+      <!-- Dynamic Provider Order Preference -->
       <div class="provider-container">
-        <label>Provider Order Preference <span style="font-size: 13px; color: var(--text-subtle);">Priority fallback routing</span></label>
+        <label>
+          <span>Provider Order Preference</span>
+          <span id="lbl-providers-count" class="param-note" style="color:var(--text-subtle);">Fetching supported providers...</span>
+        </label>
         
         <div class="provider-add-row">
           <select id="provider-select">
-            <option value="">-- Add a Provider --</option>
-            <option value="Together">Together</option>
-            <option value="Fireworks">Fireworks</option>
-            <option value="DeepInfra">DeepInfra</option>
-            <option value="Groq">Groq</option>
-            <option value="Cerebras">Cerebras</option>
-            <option value="SambaNova">SambaNova</option>
-            <option value="Novita">Novita</option>
-            <option value="Nebius">Nebius</option>
-            <option value="Chutes">Chutes</option>
-            <option value="Hyperbolic">Hyperbolic</option>
-            <option value="OctoAI">OctoAI</option>
-            <option value="LePlanet">LePlanet</option>
-            <option value="Anthropic">Anthropic</option>
-            <option value="OpenAI">OpenAI</option>
-            <option value="Google">Google</option>
-            <option value="DeepSeek">DeepSeek</option>
-            <option value="Mistral">Mistral</option>
-            <option value="Azure">Azure</option>
-            <option value="AWS">AWS</option>
+            <option value="">-- Add a Supported Provider --</option>
           </select>
-          <button type="button" onclick="addProvider()">+ Add</button>
+          <button type="button" id="btn-add-provider" onclick="addProvider()">+ Add</button>
         </div>
 
         <!-- Drag-and-drop provider priority list -->
@@ -887,7 +948,8 @@ async def web_dashboard(request: Request):
     let allModels = [];
     let currentModelObj = null;
     let selectedModel = 'anthropic/claude-3.7-sonnet';
-    let selectedProviders = []; // array of provider names
+    let supportedModelProviders = []; // providers serving the currently selected model
+    let selectedProviders = []; // user prioritized list
 
     document.addEventListener('DOMContentLoaded', () => {
       checkStatus();
@@ -956,6 +1018,7 @@ async def web_dashboard(request: Request):
       document.getElementById('selected-model-info').textContent = `${ctx}k context`;
 
       applyModelAdaptations(currentModelObj);
+      loadModelProviders(id);
       renderModelList(filterModelsList());
       refreshUrls();
     }
@@ -963,7 +1026,7 @@ async def web_dashboard(request: Request):
     function applyModelAdaptations(model) {
       if (!model) return;
 
-      // 1. Max Output Tokens correlation
+      // 1. Max Output Tokens: jump directly to the max allowed by the model
       const maxCompletion = model.top_provider?.max_completion_tokens || 
                             model.per_request_limits?.max_tokens || 
                             (model.context_length ? Math.min(model.context_length, 32768) : 8192);
@@ -972,14 +1035,10 @@ async def web_dashboard(request: Request):
       const maxTokLabel = document.getElementById('lbl-maxtok-limit');
       
       maxTokInput.max = maxCompletion;
+      maxTokInput.value = maxCompletion; // JUMP TO MAX ALLOWED!
       maxTokLabel.textContent = `(max: ${maxCompletion.toLocaleString()})`;
-      
-      // If current value exceeds model limit, clamp it down
-      if (parseInt(maxTokInput.value, 10) > maxCompletion) {
-        maxTokInput.value = maxCompletion;
-      }
 
-      // 2. Reasoning Effort Availability
+      // 2. Reasoning Effort: DISABLED with note if not supported (NOT hidden)
       const supportedParams = model.supported_parameters || [];
       const isReasoning = supportedParams.includes('reasoning') || 
                           supportedParams.includes('include_reasoning') ||
@@ -990,20 +1049,75 @@ async def web_dashboard(request: Request):
                           model.id.includes('thinking') ||
                           model.id.includes('qwq');
 
-      const reasoningWrapper = document.getElementById('wrapper-reasoning');
+      const reasoningSelect = document.getElementById('input-reasoning');
+      const reasoningNote = document.getElementById('lbl-reasoning-note');
+      
       if (isReasoning) {
-        reasoningWrapper.classList.remove('hidden');
+        reasoningSelect.disabled = false;
+        reasoningNote.className = 'param-note note-reasoning';
+        reasoningNote.textContent = 'Supported';
       } else {
-        reasoningWrapper.classList.add('hidden');
-        document.getElementById('input-reasoning').value = 'none';
+        reasoningSelect.disabled = true;
+        reasoningSelect.value = 'none';
+        reasoningNote.className = 'param-note note-disabled';
+        reasoningNote.textContent = '(Not supported by model)';
       }
 
-      // 3. Temperature support (some reasoning models fixed temp)
-      const tempWrapper = document.getElementById('wrapper-temp');
+      // 3. Temperature: DISABLED with note if not supported
+      const tempInput = document.getElementById('input-temp');
+      const tempNote = document.getElementById('lbl-temp-note');
       if (supportedParams.length > 0 && !supportedParams.includes('temperature')) {
-        tempWrapper.classList.add('hidden');
+        tempInput.disabled = true;
+        tempNote.className = 'param-note note-disabled';
+        tempNote.textContent = '(Fixed / not supported)';
       } else {
-        tempWrapper.classList.remove('hidden');
+        tempInput.disabled = false;
+        tempNote.className = 'param-note';
+        tempNote.innerHTML = `<span id="lbl-temp">${tempInput.value}</span>`;
+      }
+    }
+
+    async function loadModelProviders(modelId) {
+      const countLabel = document.getElementById('lbl-providers-count');
+      const select = document.getElementById('provider-select');
+      countLabel.textContent = 'Loading providers...';
+      select.innerHTML = '<option value="">Loading...</option>';
+
+      try {
+        const res = await fetch(`/api/models/${encodeURIComponent(modelId)}/endpoints`);
+        const data = await res.json();
+        supportedModelProviders = data.providers || [];
+        
+        if (supportedModelProviders.length === 0 && "/" in modelId) {
+          supportedModelProviders = [modelId.split("/")[0].toUpperCase()];
+        }
+
+        countLabel.textContent = `${supportedModelProviders.length} providers available for this model`;
+
+        // Filter selectedProviders to only keep ones supported by this new model
+        selectedProviders = selectedProviders.filter(p => supportedModelProviders.includes(p));
+        renderProviderList();
+
+        // Populate dropdown with this model's actual supported providers
+        populateProviderDropdown();
+        refreshUrls();
+      } catch (e) {
+        countLabel.textContent = 'Default routing';
+        select.innerHTML = '<option value="">-- No providers listed --</option>';
+      }
+    }
+
+    function populateProviderDropdown() {
+      const select = document.getElementById('provider-select');
+      const available = supportedModelProviders.filter(p => !selectedProviders.includes(p));
+
+      if (available.length === 0) {
+        select.innerHTML = '<option value="">All supported providers added</option>';
+        document.getElementById('btn-add-provider').disabled = true;
+      } else {
+        select.innerHTML = '<option value="">-- Add a Supported Provider --</option>' + 
+          available.map(p => `<option value="${p}">${p}</option>`).join('');
+        document.getElementById('btn-add-provider').disabled = false;
       }
     }
 
@@ -1018,7 +1132,8 @@ async def web_dashboard(request: Request):
       });
 
       document.getElementById('input-temp').addEventListener('input', (e) => {
-        document.getElementById('lbl-temp').textContent = e.target.value;
+        const lbl = document.getElementById('lbl-temp');
+        if (lbl) lbl.textContent = e.target.value;
         refreshUrls();
       });
       document.getElementById('input-topp').addEventListener('input', (e) => {
@@ -1037,14 +1152,15 @@ async def web_dashboard(request: Request):
       if (!selectedProviders.includes(val)) {
         selectedProviders.push(val);
         renderProviderList();
+        populateProviderDropdown();
         refreshUrls();
       }
-      select.value = '';
     }
 
     function removeProvider(index) {
       selectedProviders.splice(index, 1);
       renderProviderList();
+      populateProviderDropdown();
       refreshUrls();
     }
 
@@ -1061,7 +1177,7 @@ async def web_dashboard(request: Request):
     function renderProviderList() {
       const listEl = document.getElementById('provider-list-items');
       if (selectedProviders.length === 0) {
-        listEl.innerHTML = '<div style="font-size:13px;color:var(--text-subtle);padding:4px 0;">No provider order specified (OpenRouter default routing).</div>';
+        listEl.innerHTML = '<div style="font-size:13px;color:var(--text-subtle);padding:4px 0;">No priority order set (OpenRouter automatically load-balances).</div>';
         return;
       }
 
@@ -1116,15 +1232,15 @@ async def web_dashboard(request: Request):
     }
 
     function getValues() {
-      const reasoningVisible = !document.getElementById('wrapper-reasoning').classList.contains('hidden');
-      const tempVisible = !document.getElementById('wrapper-temp').classList.contains('hidden');
+      const tempInput = document.getElementById('input-temp');
+      const reasoningSelect = document.getElementById('input-reasoning');
       
       return {
         model: selectedModel,
-        temp: tempVisible ? parseFloat(document.getElementById('input-temp').value) : undefined,
+        temp: !tempInput.disabled ? parseFloat(tempInput.value) : undefined,
         topP: parseFloat(document.getElementById('input-topp').value),
         maxTok: parseInt(document.getElementById('input-maxtok').value, 10),
-        reasoning: reasoningVisible ? document.getElementById('input-reasoning').value : 'none',
+        reasoning: !reasoningSelect.disabled ? reasoningSelect.value : 'none',
         providers: selectedProviders.join(',')
       };
     }
