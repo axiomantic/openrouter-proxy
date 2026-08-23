@@ -2,7 +2,7 @@
 """
 OpenRouter LiteLLM Proxy Service
 Provides OpenAI-compatible endpoints with dynamic URL-based configuration
-and an interactive web UI for model selection and URL generation.
+and a clean, minimalist web UI for model selection and URL generation.
 """
 
 import os
@@ -265,11 +265,7 @@ async def handle_proxy_completion(
     except Exception:
         body = {}
 
-    # Merge configuration: URL config overrides body defaults if specified, or fills in missing body
-    # Model resolution priority:
-    # 1. URL config 'model'
-    # 2. Body 'model'
-    # 3. Default fallback
+    # Merge configuration: URL config overrides body defaults if specified
     selected_model = url_config.get("model") or body.get("model") or "anthropic/claude-3.7-sonnet"
     
     # Format model for litellm OpenRouter provider
@@ -285,7 +281,6 @@ async def handle_proxy_completion(
     if "system_prompt" in url_config and url_config["system_prompt"]:
         sys_prompt = url_config["system_prompt"]
         if messages and messages[0].get("role") == "system":
-            # Prepend to existing system prompt or replace
             messages = [{"role": "system", "content": sys_prompt}] + messages[1:]
         else:
             messages = [{"role": "system", "content": sys_prompt}] + messages
@@ -325,7 +320,7 @@ async def handle_proxy_completion(
     if "extra_body" in url_config:
         extra_body.update(url_config["extra_body"])
 
-    # Reasoning effort support (e.g. OpenAI o-series / Claude / DeepSeek R1)
+    # Reasoning effort support
     reasoning_effort = url_config.get("reasoning_effort") or body.get("reasoning_effort")
     if reasoning_effort and reasoning_effort != "none":
         if "reasoning" not in extra_body:
@@ -446,8 +441,6 @@ async def standard_chat_completions(request: Request):
 
 
 # 2. Path-based route: /p/{config_path}/v1/chat/completions
-#    e.g. /p/anthropic:claude-3.7-sonnet/v1/chat/completions
-#    e.g. /p/openai:gpt-4o,temp=0.7/v1/chat/completions
 @app.post("/p/{config_path:path}/v1/chat/completions")
 async def path_chat_completions(request: Request, config_path: str):
     url_config = extract_url_config(request, path_param=config_path)
@@ -461,7 +454,7 @@ async def b64_chat_completions(request: Request, b64_config: str):
     return await handle_proxy_completion(request, url_config)
 
 
-# 4. Catch-all for clients that append extra subpaths or use /chat/completions directly
+# 4. Catch-all for alternate roots
 @app.post("/chat/completions")
 @app.post("/p/{config_path:path}/chat/completions")
 async def alternate_chat_completions(request: Request, config_path: Optional[str] = None):
@@ -470,331 +463,387 @@ async def alternate_chat_completions(request: Request, config_path: Optional[str
 
 
 # ==============================================================================
-# Web UI Dashboard
+# Web UI Dashboard (Minimalist & Undecorated)
 # ==============================================================================
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/ui", response_class=HTMLResponse)
+@app.head("/")
+@app.head("/ui")
 async def web_dashboard(request: Request):
-    """Modern single-page configuration generator and live tester."""
+    """Minimalist, undecorated configuration generator and tester."""
     html_content = """<!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenRouter LiteLLM Proxy Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: { 50: '#eef2ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 900: '#312e81' },
-            dark: { 800: '#1e293b', 850: '#172033', 900: '#0f172a', 950: '#090d16' }
-          }
-        }
-      }
-    }
-  </script>
+  <title>openrouter-proxy</title>
   <style>
-    /* Custom scrollbar */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #475569; }
-    .badge { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium; }
-    .code-block { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    :root {
+      --bg: #09090b;
+      --surface: #121215;
+      --surface-hover: #18181c;
+      --border: #27272a;
+      --border-focus: #52525b;
+      --text: #f4f4f5;
+      --text-muted: #71717a;
+      --text-dim: #52525b;
+      --accent: #e4e4e7;
+      --accent-bg: #27272a;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      padding: 24px;
+    }
+    a { color: inherit; text-decoration: none; }
+    input, select, textarea, button {
+      font-family: inherit;
+      font-size: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 6px 10px;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--border-focus); }
+    button {
+      cursor: pointer;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover { background: var(--surface-hover); border-color: var(--border-focus); }
+    .mono { font-family: var(--font-mono); }
+    .container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+    
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: baseline; gap: 12px; }
+    .brand h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+    .brand span { font-size: 12px; color: var(--text-muted); }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #71717a; }
+    .dot.active { background: #22c55e; }
+    .dot.warn { background: #eab308; }
+
+    /* Layout */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .panel-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Model list */
+    .model-filters { display: flex; gap: 8px; }
+    .model-filters input { flex: 1; }
+    .model-list {
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+    }
+    .model-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      border-bottom: 1px solid #1c1c20;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .model-row:last-child { border-bottom: none; }
+    .model-row:hover { background: var(--surface-hover); }
+    .model-row.selected {
+      background: var(--accent-bg);
+      color: #fff;
+    }
+    .model-id { font-family: var(--font-mono); font-size: 11px; }
+    .model-meta { display: flex; gap: 8px; color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); }
+    .model-row.selected .model-meta { color: #d4d4d8; }
+
+    /* Parameters */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .form-group label span { font-family: var(--font-mono); color: var(--text); }
+    .form-group input[type="range"] {
+      padding: 0;
+      background: transparent;
+      border: none;
+      height: 20px;
+      accent-color: var(--accent);
+    }
+
+    /* Endpoints */
+    .endpoint-block { display: flex; flex-direction: column; gap: 6px; }
+    .endpoint-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+    .endpoint-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text);
+      word-break: break-all;
+      user-select: all;
+    }
+
+    /* Code Snippets */
+    .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .tab {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 2px 8px;
+      font-size: 11px;
+      border-radius: 3px;
+    }
+    .tab.active { background: var(--accent-bg); color: var(--text); }
+    pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.4;
+    }
+
+    /* Test prompt */
+    .test-form { display: flex; gap: 8px; }
+    .test-form input { flex: 1; }
+    .test-output {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      min-height: 80px;
+      max-height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--text);
+      color: var(--bg);
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      opacity: 0;
+      transition: opacity 0.15s;
+      pointer-events: none;
+    }
   </style>
 </head>
-<body class="bg-dark-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+<body>
 
-  <!-- Top Navbar -->
-  <header class="border-b border-slate-800 bg-dark-900/80 backdrop-blur sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
-          ⚡
-        </div>
-        <div>
-          <h1 class="font-bold text-lg leading-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">
-            OpenRouter LiteLLM Proxy
-          </h1>
-          <p class="text-xs text-slate-400">Dynamic URL Router & Configurator</p>
-        </div>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <h1>openrouter-proxy</h1>
+        <span>v1.0.0</span>
       </div>
-
-      <div class="flex items-center gap-4">
-        <div id="status-pill" class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300">
-          <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" id="status-dot"></span>
-          <span id="status-text">Checking status...</span>
-        </div>
-        <button onclick="fetchModels(true)" title="Refresh Models from OpenRouter" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-        </button>
+      <div class="status">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">connecting</span>
       </div>
-    </div>
-  </header>
+    </header>
 
-  <!-- Main Container -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-    <!-- Left Column: Configurator & Model Selector (7 cols) -->
-    <div class="lg:col-span-7 flex flex-col gap-6">
-
-      <!-- Model Search & Card Selector -->
-      <div class="bg-dark-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-base font-semibold text-white flex items-center gap-2">
-            <span>🎯</span> 1. Select Model
-          </h2>
-          <span id="model-count-badge" class="text-xs text-indigo-400 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/50">
-            Loading models...
-          </span>
-        </div>
-
-        <!-- Search & Filter Controls -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-          <div class="sm:col-span-2 relative">
-            <input type="text" id="model-search" placeholder="Search (e.g. claude, gpt-4o, deepseek, llama)..." 
-              class="w-full bg-dark-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-            <span class="absolute right-3 top-2.5 text-slate-500 text-xs">⌘K</span>
-          </div>
-          <div>
-            <select id="provider-filter" class="w-full bg-dark-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
-              <option value="all">All Providers</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Quick Filter Tags -->
-        <div class="flex flex-wrap gap-1.5 mb-4 text-xs">
-          <button onclick="applyFilterTag('reasoning')" class="filter-tag px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700">🧠 Reasoning / CoT</button>
-          <button onclick="applyFilterTag('vision')" class="filter-tag px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700">👁️ Vision / Multimodal</button>
-          <button onclick="applyFilterTag('free')" class="filter-tag px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700">🎁 Free / Open</button>
-          <button onclick="applyFilterTag('large-context')" class="filter-tag px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700">📚 100k+ Context</button>
-          <button onclick="clearFilterTags()" class="px-2 py-1 rounded-lg text-slate-500 hover:text-slate-300">Reset</button>
-        </div>
-
-        <!-- Model Selection List / Carousel Box -->
-        <div id="models-list-container" class="max-h-64 overflow-y-auto space-y-2 pr-1 border border-slate-800/80 rounded-xl p-2 bg-dark-950/50">
-          <div class="text-center py-8 text-slate-500 text-sm">Fetching model registry from OpenRouter...</div>
-        </div>
-
-        <!-- Selected Model Summary Box -->
-        <div id="selected-model-card" class="mt-4 p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-white text-base" id="card-model-name">anthropic/claude-3.7-sonnet</span>
-              <span class="px-2 py-0.5 text-xs rounded bg-indigo-600/30 text-indigo-300 font-mono" id="card-context-len">200k ctx</span>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 line-clamp-1" id="card-model-desc">State-of-the-art hybrid reasoning model</p>
-          </div>
-          <div class="text-right text-xs text-slate-400">
-            <div>Prompt: <span class="text-emerald-400 font-mono" id="card-prompt-price">$3.00/M</span></div>
-            <div>Completion: <span class="text-emerald-400 font-mono" id="card-comp-price">$15.00/M</span></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Parameters & Options Customizer -->
-      <div class="bg-dark-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-        <h2 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
-          <span>🎛️</span> 2. Fine-tune Parameters
-        </h2>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <!-- Temperature -->
-          <div>
-            <div class="flex justify-between text-xs mb-1">
-              <label class="text-slate-300 font-medium">Temperature</label>
-              <span id="temp-val" class="font-mono text-indigo-400 font-bold">0.7</span>
-            </div>
-            <input type="range" id="param-temp" min="0" max="2" step="0.05" value="0.7" 
-              class="w-full accent-indigo-500 bg-slate-800 rounded h-1.5 cursor-pointer">
-            <span class="text-[11px] text-slate-500">Lower = focused & deterministic, Higher = creative</span>
-          </div>
-
-          <!-- Top P -->
-          <div>
-            <div class="flex justify-between text-xs mb-1">
-              <label class="text-slate-300 font-medium">Top P</label>
-              <span id="topp-val" class="font-mono text-indigo-400 font-bold">1.0</span>
-            </div>
-            <input type="range" id="param-topp" min="0" max="1" step="0.05" value="1.0" 
-              class="w-full accent-indigo-500 bg-slate-800 rounded h-1.5 cursor-pointer">
-            <span class="text-[11px] text-slate-500">Nucleus sampling threshold</span>
-          </div>
-
-          <!-- Max Tokens -->
-          <div>
-            <div class="flex justify-between text-xs mb-1">
-              <label class="text-slate-300 font-medium">Max Output Tokens</label>
-              <span id="maxtok-val" class="font-mono text-indigo-400 font-bold">4096</span>
-            </div>
-            <input type="number" id="param-maxtok" min="1" max="128000" step="256" value="4096" 
-              class="w-full bg-dark-950 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500">
-            <span class="text-[11px] text-slate-500">Limit max response length</span>
-          </div>
-
-          <!-- Reasoning Effort -->
-          <div>
-            <div class="flex justify-between text-xs mb-1">
-              <label class="text-slate-300 font-medium">Reasoning Effort (CoT)</label>
-              <span class="text-[10px] text-violet-400 font-medium">o-series / Claude / R1</span>
-            </div>
-            <select id="param-reasoning" class="w-full bg-dark-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
-              <option value="none">Disabled / Default</option>
-              <option value="low">Low Effort</option>
-              <option value="medium">Medium Effort</option>
-              <option value="high">High Effort (Deep Reason)</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Advanced Collapsible Options -->
-        <details class="mt-4 pt-4 border-t border-slate-800">
-          <summary class="text-xs font-semibold text-slate-400 hover:text-slate-200 cursor-pointer select-none">
-            ▸ Advanced: System Prompt Override & OpenRouter Provider Routing
-          </summary>
-          <div class="mt-3 space-y-3 pt-2">
-            <div>
-              <label class="block text-xs font-medium text-slate-300 mb-1">Custom System Prompt (Prepend/Override)</label>
-              <textarea id="param-system-prompt" rows="2" placeholder="e.g. You are an expert software engineer specializing in macOS launchd daemons..." 
-                class="w-full bg-dark-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"></textarea>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1">Provider Routing Order (comma-separated)</label>
-                <input type="text" id="param-provider-order" placeholder="e.g. Together,Fireworks,DeepInfra" 
-                  class="w-full bg-dark-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
-              </div>
-              <div class="flex items-center gap-2 pt-4">
-                <input type="checkbox" id="param-fallbacks" checked class="rounded bg-dark-950 border-slate-700 text-indigo-600 focus:ring-0">
-                <label for="param-fallbacks" class="text-xs text-slate-300">Allow Provider Fallbacks</label>
-              </div>
-            </div>
-          </div>
-        </details>
-      </div>
-
-    </div>
-
-    <!-- Right Column: Generated Endpoints & Live Tester (5 cols) -->
-    <div class="lg:col-span-5 flex flex-col gap-6">
-
-      <!-- Generated URLs Card -->
-      <div class="bg-dark-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-white flex items-center gap-2">
-            <span>🔗</span> 3. Generated Proxy URLs
-          </h2>
-          <span class="text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded">Ready</span>
-        </div>
-        <p class="text-xs text-slate-400 mb-4">Use these endpoints in Cursor, Continue.dev, Aider, LibreChat, OpenAI SDK, etc.</p>
-
-        <!-- Style 1: Path Based URL (Recommended for most tools) -->
-        <div class="mb-4">
-          <div class="flex justify-between items-center text-xs mb-1">
-            <span class="font-medium text-indigo-300">Path-Based Base URL (Recommended)</span>
-            <button onclick="copyToClipboard('path-base-url')" class="text-indigo-400 hover:text-indigo-300 text-xs flex items-center gap-1">
-              📋 Copy
-            </button>
-          </div>
-          <div class="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-200 break-all select-all flex items-center justify-between" id="path-base-url">
-            http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1
-          </div>
-          <span class="text-[11px] text-slate-500">Paste as <code class="text-slate-400">OPENAI_BASE_URL</code> or <code class="text-slate-400">baseURL</code></span>
-        </div>
-
-        <!-- Style 2: Query String URL -->
-        <div class="mb-4">
-          <div class="flex justify-between items-center text-xs mb-1">
-            <span class="font-medium text-slate-300">Query-String Base URL</span>
-            <button onclick="copyToClipboard('query-base-url')" class="text-indigo-400 hover:text-indigo-300 text-xs flex items-center gap-1">
-              📋 Copy
-            </button>
-          </div>
-          <div class="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-200 break-all select-all" id="query-base-url">
-            http://localhost:18080/v1?model=anthropic/claude-3.7-sonnet&temperature=0.7
-          </div>
-        </div>
-
-        <!-- Full Completions Endpoint -->
-        <div class="mb-4">
-          <div class="flex justify-between items-center text-xs mb-1">
-            <span class="font-medium text-slate-300">Direct Completions Target</span>
-            <button onclick="copyToClipboard('completions-endpoint-url')" class="text-indigo-400 hover:text-indigo-300 text-xs flex items-center gap-1">
-              📋 Copy
-            </button>
-          </div>
-          <div class="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-400 break-all select-all" id="completions-endpoint-url">
-            http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1/chat/completions
-          </div>
-        </div>
-
-        <!-- Code Snippet Tabs -->
-        <div class="mt-4 border-t border-slate-800 pt-3">
-          <div class="flex gap-2 border-b border-slate-800 text-xs pb-1 mb-2">
-            <button onclick="setSnippetTab('curl')" id="tab-curl" class="font-semibold text-indigo-400 border-b-2 border-indigo-500 pb-1">cURL</button>
-            <button onclick="setSnippetTab('python')" id="tab-python" class="text-slate-400 hover:text-slate-200 pb-1">Python (OpenAI)</button>
-            <button onclick="setSnippetTab('js')" id="tab-js" class="text-slate-400 hover:text-slate-200 pb-1">Node.js</button>
-            <button onclick="setSnippetTab('aider')" id="tab-aider" class="text-slate-400 hover:text-slate-200 pb-1">Aider / CLI</button>
-          </div>
-
-          <div class="relative">
-            <pre id="snippet-box" class="p-3 bg-dark-950 border border-slate-800/80 rounded-xl text-[11px] font-mono text-slate-300 overflow-x-auto max-h-48"></pre>
-            <button onclick="copySnippet()" class="absolute top-2 right-2 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px]">
-              Copy Code
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live Interactive Prompt Tester -->
-      <div class="bg-dark-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col">
-        <h2 class="text-base font-semibold text-white mb-2 flex items-center justify-between">
-          <span class="flex items-center gap-2"><span>💬</span> 4. Test Proxy Endpoint</span>
-          <span id="test-latency" class="text-[11px] font-mono text-slate-400"></span>
-        </h2>
+    <!-- Main Grid -->
+    <div class="grid">
+      
+      <!-- Left: Model & Parameters -->
+      <div style="display: flex; flex-direction: column; gap: 20px;">
         
-        <div class="flex gap-2 mb-3">
-          <input type="text" id="test-input" placeholder="Say 'Hello!' or test reasoning with 'Write a quick haiku about daemons'..." 
-            value="Write a clever haiku about macOS launchd daemons."
-            class="flex-1 bg-dark-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
-          <button id="test-send-btn" onclick="sendTestPrompt()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-1.5">
-            <span id="test-btn-icon">🚀</span>
-            <span>Send</span>
-          </button>
+        <!-- Model Selection -->
+        <div class="panel">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="panel-title">Model</div>
+            <div id="model-count" style="font-size: 11px; color: var(--text-dim); font-family: var(--font-mono);">0 models</div>
+          </div>
+
+          <div class="model-filters">
+            <input type="text" id="model-search" placeholder="Filter models (e.g. claude, gpt-4o, deepseek)..." autocomplete="off">
+            <select id="provider-filter">
+              <option value="all">All</option>
+            </select>
+          </div>
+
+          <div class="model-list" id="models-list">
+            <div style="padding: 20px; text-align: center; color: var(--text-dim); font-size: 11px;">Loading models...</div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+            <span>Selected: <span id="selected-model-name" style="color: var(--text);">anthropic/claude-3.7-sonnet</span></span>
+            <span id="selected-model-ctx">200k ctx</span>
+          </div>
         </div>
 
-        <!-- Response stream container -->
-        <div id="test-output" class="flex-1 min-h-[120px] max-h-60 overflow-y-auto p-3 bg-dark-950 border border-slate-800 rounded-xl text-xs text-slate-200 font-mono whitespace-pre-wrap">
-Ready. Click Send to verify the proxy response stream.
+        <!-- Parameters -->
+        <div class="panel">
+          <div class="panel-title">Parameters</div>
+          
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Temperature <span id="val-temp">0.7</span></label>
+              <input type="range" id="param-temp" min="0" max="2" step="0.05" value="0.7">
+            </div>
+            <div class="form-group">
+              <label>Top P <span id="val-topp">1.0</span></label>
+              <input type="range" id="param-topp" min="0" max="1" step="0.05" value="1.0">
+            </div>
+            <div class="form-group">
+              <label>Max Output Tokens</label>
+              <input type="number" id="param-maxtok" min="1" max="128000" step="256" value="4096">
+            </div>
+            <div class="form-group">
+              <label>Reasoning Effort</label>
+              <select id="param-reasoning">
+                <option value="none">Default / None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 4px;">
+            <label>System Prompt Override</label>
+            <input type="text" id="param-sysprompt" placeholder="Optional system instruction...">
+          </div>
+
+          <div class="form-group">
+            <label>Provider Order</label>
+            <input type="text" id="param-providers" placeholder="e.g. Together,Fireworks,DeepInfra">
+          </div>
         </div>
+
+      </div>
+
+      <!-- Right: Endpoints & Test -->
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        
+        <!-- Generated URLs -->
+        <div class="panel">
+          <div class="panel-title">Configured Endpoints</div>
+
+          <div class="endpoint-block">
+            <div class="endpoint-label">
+              <span>Path Base URL (OpenAI SDK / Cursor / Aider)</span>
+              <button onclick="copyText('url-path')">Copy</button>
+            </div>
+            <div class="endpoint-box" id="url-path">http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1</div>
+          </div>
+
+          <div class="endpoint-block">
+            <div class="endpoint-label">
+              <span>Query String Base URL</span>
+              <button onclick="copyText('url-query')">Copy</button>
+            </div>
+            <div class="endpoint-box" id="url-query">http://localhost:18080/v1?model=anthropic/claude-3.7-sonnet&temperature=0.7</div>
+          </div>
+
+          <!-- Code Snippets -->
+          <div style="margin-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div class="tabs">
+                <button class="tab active" onclick="setTab('curl')">cURL</button>
+                <button class="tab" onclick="setTab('python')">Python</button>
+                <button class="tab" onclick="setTab('js')">Node.js</button>
+                <button class="tab" onclick="setTab('env')">Env Vars</button>
+              </div>
+              <button onclick="copySnippet()" style="font-size: 11px;">Copy Code</button>
+            </div>
+            <pre id="snippet-code"></pre>
+          </div>
+        </div>
+
+        <!-- Live Endpoint Test -->
+        <div class="panel">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="panel-title">Test Endpoint</div>
+            <div id="test-latency" style="font-size: 11px; color: var(--text-dim); font-family: var(--font-mono);"></div>
+          </div>
+
+          <div class="test-form">
+            <input type="text" id="test-input" value="Write a one-sentence summary of quantum computing.">
+            <button id="test-btn" onclick="runTest()">Send</button>
+          </div>
+
+          <div class="test-output" id="test-output">Ready.</div>
+        </div>
+
       </div>
 
     </div>
-
-  </main>
-
-  <!-- Toast Notification -->
-  <div id="toast" class="fixed bottom-5 right-5 bg-indigo-600 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl transition-opacity duration-200 opacity-0 pointer-events-none z-50 flex items-center gap-2">
-    <span>✓</span> <span id="toast-msg">Copied to clipboard</span>
   </div>
+
+  <div id="toast">Copied</div>
 
   <script>
     let allModels = [];
-    let currentFilteredModels = [];
-    let selectedModelId = 'anthropic/claude-3.7-sonnet';
+    let selectedModel = 'anthropic/claude-3.7-sonnet';
     let currentTab = 'curl';
 
-    // Initialize
     document.addEventListener('DOMContentLoaded', () => {
       checkHealth();
       fetchModels();
-      setupEventListeners();
-      updateOutputs();
+      initEvents();
+      update();
     });
 
     async function checkHealth() {
@@ -802,389 +851,254 @@ Ready. Click Send to verify the proxy response stream.
         const res = await fetch('/api/health');
         const data = await res.json();
         const dot = document.getElementById('status-dot');
-        const text = document.getElementById('status-text');
-        
+        const txt = document.getElementById('status-text');
         if (data.has_api_key) {
-          dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
-          text.innerHTML = `Daemon Active • Key: <span class="font-mono text-indigo-400">${data.masked_key}</span>`;
+          dot.className = 'dot active';
+          txt.textContent = `online • ${data.masked_key}`;
         } else {
-          dot.className = 'w-2 h-2 rounded-full bg-rose-500 animate-ping';
-          text.innerHTML = `⚠️ No API Key in .env (Add OPENROUTER_API_KEY)`;
+          dot.className = 'dot warn';
+          txt.textContent = 'online • no api key in .env';
         }
       } catch (e) {
-        document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-rose-500';
-        document.getElementById('status-text').textContent = 'Proxy Disconnected';
+        document.getElementById('status-dot').className = 'dot';
+        document.getElementById('status-text').textContent = 'offline';
       }
     }
 
-    async function fetchModels(forceRefresh = false) {
-      const badge = document.getElementById('model-count-badge');
-      badge.textContent = forceRefresh ? 'Refreshing...' : 'Fetching models...';
-      
+    async function fetchModels() {
       try {
-        const url = forceRefresh ? '/api/models?refresh=true' : '/api/models';
-        const res = await fetch(url);
+        const res = await fetch('/api/models');
         const json = await res.json();
         allModels = json.data || [];
-        badge.textContent = `${allModels.length} models available`;
-        
-        populateProviderFilter();
-        renderModelsList(allModels);
-        
-        // If current selected model exists in list, sync card
-        const match = allModels.find(m => m.id === selectedModelId);
-        if (match) {
-          updateSelectedModelCard(match);
-        } else if (allModels.length > 0) {
-          selectModel(allModels[0].id);
-        }
-      } catch (err) {
-        badge.textContent = 'Failed to load models';
-        console.error(err);
+        document.getElementById('model-count').textContent = `${allModels.length} models`;
+        buildProviders();
+        renderModels(allModels);
+      } catch (e) {
+        document.getElementById('models-list').innerHTML = '<div style="padding: 10px; color: var(--text-dim);">Failed to load models.</div>';
       }
     }
 
-    function populateProviderFilter() {
+    function buildProviders() {
       const select = document.getElementById('provider-filter');
-      const providers = new Set();
+      const set = new Set();
       allModels.forEach(m => {
-        const provider = m.id.split('/')[0];
-        if (provider) providers.add(provider);
+        const p = m.id.split('/')[0];
+        if (p) set.add(p);
       });
-
-      const sortedProviders = Array.from(providers).sort();
-      select.innerHTML = '<option value="all">All Providers (' + sortedProviders.length + ')</option>';
-      sortedProviders.forEach(p => {
+      Array.from(set).sort().forEach(p => {
         const opt = document.createElement('option');
         opt.value = p;
-        opt.textContent = p.charAt(0).toUpperCase() + p.slice(1);
+        opt.textContent = p;
         select.appendChild(opt);
       });
     }
 
-    function renderModelsList(models) {
-      const container = document.getElementById('models-list-container');
-      currentFilteredModels = models;
-      if (models.length === 0) {
-        container.innerHTML = '<div class="text-center py-6 text-slate-500 text-xs">No models match your search.</div>';
+    function renderModels(list) {
+      const container = document.getElementById('models-list');
+      if (!list.length) {
+        container.innerHTML = '<div style="padding: 10px; color: var(--text-dim);">No matching models</div>';
         return;
       }
-
-      container.innerHTML = models.slice(0, 80).map(m => {
-        const isSelected = m.id === selectedModelId;
-        const ctxK = Math.round((m.context_length || 0) / 1000);
-        const promptPrice = m.pricing ? (parseFloat(m.pricing.prompt) * 1000000).toFixed(2) : '0';
-        const isReasoning = m.id.includes('r1') || m.id.includes('o1') || m.id.includes('o3') || m.id.includes('sonnet') || m.id.includes('deepseek-r1') || (m.supported_parameters && m.supported_parameters.includes('reasoning'));
-
+      container.innerHTML = list.slice(0, 100).map(m => {
+        const isSel = m.id === selectedModel;
+        const ctx = Math.round((m.context_length || 0) / 1000);
         return `
-          <div onclick="selectModel('${m.id}')" 
-            class="p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between text-xs ${
-              isSelected 
-                ? 'bg-indigo-600/20 border-indigo-500/80 text-white shadow-md' 
-                : 'bg-dark-900/60 border-slate-800/80 text-slate-300 hover:border-slate-700 hover:bg-slate-800/40'
-            }">
-            <div class="min-w-0 pr-2">
-              <div class="flex items-center gap-1.5">
-                <span class="font-semibold truncate ${isSelected ? 'text-indigo-300' : 'text-slate-200'}">${m.id}</span>
-                ${isReasoning ? '<span class="px-1 py-0.2 bg-violet-950 text-violet-300 border border-violet-800/50 rounded text-[9px]">🧠 CoT</span>' : ''}
-              </div>
-              <div class="text-[11px] text-slate-500 truncate">${m.name || m.id}</div>
-            </div>
-            <div class="text-right shrink-0 flex items-center gap-2">
-              <span class="font-mono text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">${ctxK}k ctx</span>
-              <span class="font-mono text-[10px] text-emerald-400">$${promptPrice}/M</span>
+          <div class="model-row ${isSel ? 'selected' : ''}" onclick="selectModel('${m.id}')">
+            <span class="model-id">${m.id}</span>
+            <div class="model-meta">
+              <span>${ctx}k</span>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    function selectModel(modelId) {
-      selectedModelId = modelId;
-      const model = allModels.find(m => m.id === modelId) || { id: modelId, name: modelId, context_length: 8192 };
-      updateSelectedModelCard(model);
-      renderModelsList(currentFilteredModels);
-      updateOutputs();
-    }
-
-    function updateSelectedModelCard(model) {
-      document.getElementById('card-model-name').textContent = model.id;
-      const ctxK = Math.round((model.context_length || 0) / 1000);
-      document.getElementById('card-context-len').textContent = `${ctxK}k context`;
-      document.getElementById('card-model-desc').textContent = model.description || model.name || 'OpenRouter model endpoint';
-      
-      if (model.pricing) {
-        const pPrompt = (parseFloat(model.pricing.prompt || 0) * 1000000).toFixed(2);
-        const pComp = (parseFloat(model.pricing.completion || 0) * 1000000).toFixed(2);
-        document.getElementById('card-prompt-price').textContent = `$${pPrompt}/M`;
-        document.getElementById('card-comp-price').textContent = `$${pComp}/M`;
+    function selectModel(id) {
+      selectedModel = id;
+      document.getElementById('selected-model-name').textContent = id;
+      const m = allModels.find(x => x.id === id);
+      if (m) {
+        const ctx = Math.round((m.context_length || 0) / 1000);
+        document.getElementById('selected-model-ctx').textContent = `${ctx}k ctx`;
       }
+      renderModels(getFilteredModels());
+      update();
     }
 
-    function setupEventListeners() {
-      const searchInput = document.getElementById('model-search');
-      const providerSelect = document.getElementById('provider-filter');
-      
-      const filterHandler = () => {
-        const query = searchInput.value.toLowerCase().trim();
-        const provider = providerSelect.value;
-
-        const filtered = allModels.filter(m => {
-          const matchQuery = !query || m.id.toLowerCase().includes(query) || (m.name && m.name.toLowerCase().includes(query)) || (m.description && m.description.toLowerCase().includes(query));
-          const matchProvider = provider === 'all' || m.id.startsWith(provider + '/');
-          return matchQuery && matchProvider;
-        });
-        renderModelsList(filtered);
-      };
-
-      searchInput.addEventListener('input', filterHandler);
-      providerSelect.addEventListener('change', filterHandler);
-
-      // Temperature slider
-      const tempSlider = document.getElementById('param-temp');
-      tempSlider.addEventListener('input', (e) => {
-        document.getElementById('temp-val').textContent = e.target.value;
-        updateOutputs();
-      });
-
-      // Top P slider
-      const topPSlider = document.getElementById('param-topp');
-      topPSlider.addEventListener('input', (e) => {
-        document.getElementById('topp-val').textContent = e.target.value;
-        updateOutputs();
-      });
-
-      // Max tokens
-      const maxTokInput = document.getElementById('param-maxtok');
-      maxTokInput.addEventListener('input', (e) => {
-        document.getElementById('maxtok-val').textContent = e.target.value;
-        updateOutputs();
-      });
-
-      // Reasoning
-      document.getElementById('param-reasoning').addEventListener('change', updateOutputs);
-      document.getElementById('param-system-prompt').addEventListener('input', updateOutputs);
-      document.getElementById('param-provider-order').addEventListener('input', updateOutputs);
-      document.getElementById('param-fallbacks').addEventListener('change', updateOutputs);
-
-      // Keyboard shortcut ⌘K / Ctrl+K
-      window.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-          e.preventDefault();
-          searchInput.focus();
-        }
+    function getFilteredModels() {
+      const q = document.getElementById('model-search').value.toLowerCase().trim();
+      const p = document.getElementById('provider-filter').value;
+      return allModels.filter(m => {
+        const matchesQ = !q || m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q));
+        const matchesP = p === 'all' || m.id.startsWith(p + '/');
+        return matchesQ && matchesP;
       });
     }
 
-    function applyFilterTag(tag) {
-      if (tag === 'reasoning') {
-        const filtered = allModels.filter(m => m.id.includes('r1') || m.id.includes('o1') || m.id.includes('o3') || m.id.includes('sonnet') || (m.supported_parameters && m.supported_parameters.includes('reasoning')));
-        renderModelsList(filtered);
-      } else if (tag === 'vision') {
-        const filtered = allModels.filter(m => (m.architecture && m.architecture.modality && m.architecture.modality.includes('image')) || m.id.includes('vision') || m.id.includes('4o') || m.id.includes('gemini') || m.id.includes('sonnet'));
-        renderModelsList(filtered);
-      } else if (tag === 'free') {
-        const filtered = allModels.filter(m => m.id.endsWith(':free') || (m.pricing && parseFloat(m.pricing.prompt) === 0));
-        renderModelsList(filtered);
-      } else if (tag === 'large-context') {
-        const filtered = allModels.filter(m => (m.context_length || 0) >= 100000);
-        renderModelsList(filtered);
-      }
+    function initEvents() {
+      document.getElementById('model-search').addEventListener('input', () => renderModels(getFilteredModels()));
+      document.getElementById('provider-filter').addEventListener('change', () => renderModels(getFilteredModels()));
+
+      document.getElementById('param-temp').addEventListener('input', (e) => {
+        document.getElementById('val-temp').textContent = e.target.value;
+        update();
+      });
+      document.getElementById('param-topp').addEventListener('input', (e) => {
+        document.getElementById('val-topp').textContent = e.target.value;
+        update();
+      });
+      document.getElementById('param-maxtok').addEventListener('input', update);
+      document.getElementById('param-reasoning').addEventListener('change', update);
+      document.getElementById('param-sysprompt').addEventListener('input', update);
+      document.getElementById('param-providers').addEventListener('input', update);
     }
 
-    function clearFilterTags() {
-      document.getElementById('model-search').value = '';
-      document.getElementById('provider-filter').value = 'all';
-      renderModelsList(allModels);
-    }
-
-    function getCurrentParams() {
-      const temp = parseFloat(document.getElementById('param-temp').value);
-      const topP = parseFloat(document.getElementById('param-topp').value);
-      const maxTok = parseInt(document.getElementById('param-maxtok').value, 10);
-      const reasoning = document.getElementById('param-reasoning').value;
-      const sysPrompt = document.getElementById('param-system-prompt').value.trim();
-      const providerOrder = document.getElementById('param-provider-order').value.trim();
-      const fallbacks = document.getElementById('param-fallbacks').checked;
-
+    function getParams() {
       return {
-        model: selectedModelId,
-        temperature: temp,
-        top_p: topP,
-        max_tokens: maxTok,
-        reasoning_effort: reasoning !== 'none' ? reasoning : undefined,
-        system_prompt: sysPrompt || undefined,
-        provider_order: providerOrder || undefined,
-        allow_fallbacks: !fallbacks ? false : undefined
+        model: selectedModel,
+        temp: parseFloat(document.getElementById('param-temp').value),
+        topP: parseFloat(document.getElementById('param-topp').value),
+        maxTok: parseInt(document.getElementById('param-maxtok').value, 10),
+        reasoning: document.getElementById('param-reasoning').value,
+        sysPrompt: document.getElementById('param-sysprompt').value.trim(),
+        providers: document.getElementById('param-providers').value.trim()
       };
     }
 
-    function updateOutputs() {
+    function update() {
       const origin = window.location.origin;
-      const p = getCurrentParams();
+      const p = getParams();
+      const slug = p.model.replace('/', ':');
 
-      // 1. Path-based URL: /p/provider:model_name/v1
-      // Replace '/' with ':' in model name for cleanest URL pathing
-      const modelSlug = p.model.replace('/', ':');
-      const pathBaseUrl = `${origin}/p/${modelSlug}/v1`;
-      document.getElementById('path-base-url').textContent = pathBaseUrl;
+      // Path URL
+      const pathUrl = `${origin}/p/${slug}/v1`;
+      document.getElementById('url-path').textContent = pathUrl;
 
-      // 2. Query string URL: /v1?model=...&temp=...
-      const queryParts = [`model=${encodeURIComponent(p.model)}`];
-      if (p.temperature !== 0.7) queryParts.push(`temperature=${p.temperature}`);
-      if (p.top_p !== 1.0) queryParts.push(`top_p=${p.top_p}`);
-      if (p.max_tokens !== 4096) queryParts.push(`max_tokens=${p.max_tokens}`);
-      if (p.reasoning_effort) queryParts.push(`reasoning_effort=${p.reasoning_effort}`);
-      if (p.provider_order) queryParts.push(`provider_order=${encodeURIComponent(p.provider_order)}`);
-      
-      const queryBaseUrl = `${origin}/v1?${queryParts.join('&')}`;
-      document.getElementById('query-base-url').textContent = queryBaseUrl;
+      // Query URL
+      const q = [`model=${encodeURIComponent(p.model)}`];
+      if (p.temp !== 0.7) q.push(`temperature=${p.temp}`);
+      if (p.topP !== 1.0) q.push(`top_p=${p.topP}`);
+      if (p.maxTok !== 4096) q.push(`max_tokens=${p.maxTok}`);
+      if (p.reasoning !== 'none') q.push(`reasoning_effort=${p.reasoning}`);
+      if (p.providers) q.push(`provider_order=${encodeURIComponent(p.providers)}`);
 
-      // Direct completions endpoint
-      const completionsUrl = `${origin}/p/${modelSlug}/v1/chat/completions`;
-      document.getElementById('completions-endpoint-url').textContent = completionsUrl;
+      document.getElementById('url-query').textContent = `${origin}/v1?${q.join('&')}`;
 
       renderSnippet();
     }
 
-    function setSnippetTab(tab) {
+    function setTab(tab) {
       currentTab = tab;
-      ['curl', 'python', 'js', 'aider'].forEach(t => {
-        const el = document.getElementById(`tab-${t}`);
-        if (t === tab) {
-          el.className = 'font-semibold text-indigo-400 border-b-2 border-indigo-500 pb-1';
-        } else {
-          el.className = 'text-slate-400 hover:text-slate-200 pb-1';
-        }
+      document.querySelectorAll('.tab').forEach(el => {
+        el.classList.toggle('active', el.textContent.toLowerCase().includes(tab));
       });
       renderSnippet();
     }
 
     function renderSnippet() {
       const origin = window.location.origin;
-      const p = getCurrentParams();
-      const modelSlug = p.model.replace('/', ':');
-      const box = document.getElementById('snippet-box');
+      const p = getParams();
+      const slug = p.model.replace('/', ':');
+      const box = document.getElementById('snippet-code');
 
       if (currentTab === 'curl') {
-        box.textContent = `curl ${origin}/p/${modelSlug}/v1/chat/completions \\
+        box.textContent = `curl ${origin}/p/${slug}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer sk-proxy-local" \\
   -d '{
-    "messages": [{"role": "user", "content": "Hello via OpenRouter proxy!"}],
-    "temperature": ${p.temperature},
-    "max_tokens": ${p.max_tokens},
+    "messages": [{"role": "user", "content": "Hello"}],
+    "temperature": ${p.temp},
+    "max_tokens": ${p.maxTok},
     "stream": true
   }'`;
       } else if (currentTab === 'python') {
         box.textContent = `from openai import OpenAI
 
 client = OpenAI(
-    base_url="${origin}/p/${modelSlug}/v1",
-    api_key="sk-proxy-local"  # Server uses OPENROUTER_API_KEY
+    base_url="${origin}/p/${slug}/v1",
+    api_key="sk-proxy-local"
 )
 
 response = client.chat.completions.create(
     model="${p.model}",
-    messages=[{"role": "user", "content": "Hello!"}],
-    temperature=${p.temperature},
-    max_tokens=${p.max_tokens},
+    messages=[{"role": "user", "content": "Hello"}],
+    temperature=${p.temp},
     stream=True
 )
 
 for chunk in response:
-    content = chunk.choices[0].delta.content or ""
-    print(content, end="", flush=True)`;
+    print(chunk.choices[0].delta.content or "", end="", flush=True)`;
       } else if (currentTab === 'js') {
         box.textContent = `import OpenAI from "openai";
 
-const openai = new OpenAI({
-  baseURL: "${origin}/p/${modelSlug}/v1",
+const client = new OpenAI({
+  baseURL: "${origin}/p/${slug}/v1",
   apiKey: "sk-proxy-local"
 });
 
-const stream = await openai.chat.completions.create({
+const stream = await client.chat.completions.create({
   model: "${p.model}",
-  messages: [{ role: "user", content: "Hello!" }],
+  messages: [{ role: "user", content: "Hello" }],
   stream: true
 });
 
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || "");
 }`;
-      } else if (currentTab === 'aider') {
-        box.textContent = `# Set environment for Aider / Cursor / Roo Code
-export OPENAI_API_BASE="${origin}/p/${modelSlug}/v1"
-export OPENAI_API_KEY="sk-proxy-local"
-
-# Run aider with this configured proxy
-aider --openai-api-base="${origin}/p/${modelSlug}/v1"`;
+      } else if (currentTab === 'env') {
+        box.textContent = `export OPENAI_BASE_URL="${origin}/p/${slug}/v1"
+export OPENAI_API_KEY="sk-proxy-local"`;
       }
     }
 
-    async function sendTestPrompt() {
-      const btn = document.getElementById('test-send-btn');
+    async function runTest() {
+      const btn = document.getElementById('test-btn');
       const input = document.getElementById('test-input');
-      const output = document.getElementById('test-output');
-      const latency = document.getElementById('test-latency');
-      const p = getCurrentParams();
-      const prompt = input.value.trim();
-
-      if (!prompt) return;
+      const out = document.getElementById('test-output');
+      const lat = document.getElementById('test-latency');
+      const p = getParams();
+      const text = input.value.trim();
+      if (!text) return;
 
       btn.disabled = true;
-      btn.classList.add('opacity-50');
-      document.getElementById('test-btn-icon').textContent = '⏳';
-      output.textContent = 'Connecting and streaming response...\\n';
+      btn.textContent = '...';
+      out.textContent = '';
+      lat.textContent = '';
       
-      const startTime = performance.now();
-      const modelSlug = p.model.replace('/', ':');
-      const endpoint = `/p/${modelSlug}/v1/chat/completions`;
+      const start = performance.now();
+      const slug = p.model.replace('/', ':');
 
       try {
-        const bodyPayload = {
-          messages: [{ role: 'user', content: prompt }],
-          temperature: p.temperature,
-          top_p: p.top_p,
-          max_tokens: p.max_tokens,
+        const payload = {
+          messages: [{ role: 'user', content: text }],
+          temperature: p.temp,
+          top_p: p.topP,
+          max_tokens: p.maxTok,
           stream: true
         };
-        if (p.reasoning_effort) bodyPayload.reasoning_effort = p.reasoning_effort;
-        if (p.system_prompt) bodyPayload.messages.unshift({ role: 'system', content: p.system_prompt });
+        if (p.reasoning !== 'none') payload.reasoning_effort = p.reasoning;
+        if (p.sysPrompt) payload.messages.unshift({ role: 'system', content: p.sysPrompt });
 
-        const res = await fetch(endpoint, {
+        const res = await fetch(`/p/${slug}/v1/chat/completions`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer sk-proxy-local'
-          },
-          body: JSON.stringify(bodyPayload)
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer sk-proxy-local' },
+          body: JSON.stringify(payload)
         });
 
         if (!res.ok) {
-          const errText = await res.text();
-          output.textContent = `❌ Error HTTP ${res.status}:\\n${errText}`;
+          out.textContent = `HTTP ${res.status}: ${await res.text()}`;
           return;
         }
 
         const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        output.textContent = '';
-        let fullText = '';
-        let firstTokenTime = null;
+        const dec = new TextDecoder();
+        let full = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
-          if (!firstTokenTime) {
-            firstTokenTime = ((performance.now() - startTime) / 1000).toFixed(2);
-            latency.textContent = `TTFT: ${firstTokenTime}s`;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
+          const chunk = dec.decode(value, { stream: true });
           const lines = chunk.split('\\n');
-
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const dataStr = line.replace('data: ', '').trim();
@@ -1192,56 +1106,37 @@ aider --openai-api-base="${origin}/p/${modelSlug}/v1"`;
               try {
                 const parsed = JSON.parse(dataStr);
                 const delta = parsed.choices?.[0]?.delta?.content || '';
-                const reasoning = parsed.choices?.[0]?.delta?.reasoning || parsed.choices?.[0]?.delta?.reasoning_content || '';
-                
-                if (reasoning) {
-                  fullText += `[Thinking: ${reasoning}]`;
-                }
-                if (delta) {
-                  fullText += delta;
-                }
-                output.textContent = fullText;
-                output.scrollTop = output.scrollHeight;
-              } catch (e) {
-                // partial line
-              }
+                full += delta;
+                out.textContent = full;
+              } catch (e) {}
             }
           }
         }
-
-        const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
-        latency.textContent = `Done in ${totalTime}s (TTFT: ${firstTokenTime}s)`;
-
+        const took = ((performance.now() - start) / 1000).toFixed(2);
+        lat.textContent = `${took}s`;
       } catch (e) {
-        output.textContent = `❌ Fetch Error: ${e.message}`;
+        out.textContent = `Error: ${e.message}`;
       } finally {
         btn.disabled = false;
-        btn.classList.remove('opacity-50');
-        document.getElementById('test-btn-icon').textContent = '🚀';
+        btn.textContent = 'Send';
       }
     }
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
-      document.getElementById('toast-msg').textContent = msg;
-      toast.classList.remove('opacity-0');
-      toast.classList.add('opacity-100');
-      setTimeout(() => {
-        toast.classList.remove('opacity-100');
-        toast.classList.add('opacity-0');
-      }, 2000);
+      toast.textContent = msg;
+      toast.style.opacity = '1';
+      setTimeout(() => { toast.style.opacity = '0'; }, 1500);
     }
 
-    function copyToClipboard(elementId) {
-      const text = document.getElementById(elementId).textContent.trim();
-      navigator.clipboard.writeText(text);
-      showToast('Copied endpoint URL to clipboard!');
+    function copyText(id) {
+      navigator.clipboard.writeText(document.getElementById(id).textContent.trim());
+      showToast('Copied URL');
     }
 
     function copySnippet() {
-      const text = document.getElementById('snippet-box').textContent.trim();
-      navigator.clipboard.writeText(text);
-      showToast('Copied code snippet!');
+      navigator.clipboard.writeText(document.getElementById('snippet-code').textContent.trim());
+      showToast('Copied snippet');
     }
   </script>
 </body>
