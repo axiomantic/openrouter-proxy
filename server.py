@@ -48,7 +48,13 @@ logger = logging.getLogger("openrouter-proxy")
 # Suppress overly verbose litellm logs unless in DEBUG
 litellm.suppress_debug_info = True
 
-app = FastAPI(title="OpenRouter LiteLLM Proxy", version="1.0.0")
+__version__ = "0.1.0"
+
+app = FastAPI(
+    title="OpenRouter LiteLLM Proxy",
+    description="Dynamic URL-configurable OpenAI-compatible proxy for OpenRouter",
+    version=__version__
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -461,6 +467,7 @@ async def health_check():
     masked_key = f"{key[:7]}...{key[-4:]}" if has_key else "Not set / default"
     return {
         "status": "ok",
+        "version": __version__,
         "has_api_key": has_key,
         "masked_key": masked_key,
         "port": DEFAULT_PORT,

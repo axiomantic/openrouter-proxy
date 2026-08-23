@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openrouter-proxy"
+version = "0.1.0"
+description = "Lightweight OpenAI-compatible proxy daemon with dynamic URL routing and interactive UI for OpenRouter"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Axiomantic" }
+]
+keywords = [
+    "openrouter",
+    "litellm",
+    "proxy",
+    "openai",
+    "fastapi",
+    "launchd",
+    "macos",
+    "llm-proxy"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: Proxy Servers",
+]
+dependencies = [
+    "litellm>=1.50.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/axiomantic/openrouter-proxy"
+Repository = "https://github.com/axiomantic/openrouter-proxy"
+Issues = "https://github.com/axiomantic/openrouter-proxy/issues"
+
+[project.scripts]
+openrouter-proxy = "server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+exclude = ["tests*", ".venv*"]
