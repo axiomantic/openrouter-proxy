@@ -214,8 +214,74 @@ def extract_url_config(request: Request, path_param: Optional[str] = None) -> Di
     return config
 
 
+def compute_model_popularity(model: Dict[str, Any]) -> int:
+    """Calculates popularity score for sorting models descending."""
+    mid = model.get("id", "").lower()
+    score = 0
+
+    # Flagship model tiers
+    if "claude-3.7-sonnet" in mid or "claude-3-7-sonnet" in mid or "claude-sonnet-5" in mid:
+        score += 100000
+    elif "deepseek-r1" in mid:
+        score += 95000
+    elif "claude-3.5-sonnet" in mid or "claude-3-5-sonnet" in mid or "claude-opus-5" in mid:
+        score += 90000
+    elif "gpt-4o" in mid and "mini" not in mid and "batch" not in mid:
+        score += 85000
+    elif "o3-mini" in mid or "o1" in mid:
+        score += 80000
+    elif "gemini-2.5-pro" in mid or "gemini-2.0-flash" in mid:
+        score += 75000
+    elif "llama-3.3-70b" in mid:
+        score += 70000
+    elif "deepseek-chat" in mid or "deepseek-v3" in mid:
+        score += 65000
+    elif "gpt-4o-mini" in mid and "batch" not in mid:
+        score += 60000
+    elif "qwen-2.5-coder-32b" in mid or "qwq" in mid:
+        score += 55000
+    elif "mistral-large" in mid or "codestral" in mid:
+        score += 50000
+
+    # Provider weights
+    if mid.startswith("anthropic/"):
+        score += 30000
+    elif mid.startswith("openai/"):
+        score += 28000
+    elif mid.startswith("deepseek/"):
+        score += 26000
+    elif mid.startswith("google/"):
+        score += 24000
+    elif mid.startswith("meta-llama/"):
+        score += 22000
+    elif mid.startswith("qwen/"):
+        score += 20000
+    elif mid.startswith("mistralai/"):
+        score += 18000
+    elif mid.startswith("x-ai/"):
+        score += 16000
+    elif mid.startswith("cohere/"):
+        score += 12000
+
+    # Capability bonuses
+    if "r1" in mid or "o1" in mid or "o3" in mid:
+        score += 3000
+    if "sonnet" in mid or "opus" in mid or "4o" in mid or "70b" in mid or "405b" in mid or "coder" in mid:
+        score += 2000
+    if model.get("context_length", 0) >= 128000:
+        score += 1000
+
+    # Batch / experimental penalties
+    if ":batch" in mid:
+        score -= 5000
+    if ":nitro" in mid or ":floor" in mid:
+        score -= 1000
+
+    return score
+
+
 async def fetch_openrouter_models(api_key: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch and cache available models from OpenRouter."""
+    """Fetch, cache, and sort models by popularity descending from OpenRouter."""
     now = time.time()
     if MODELS_CACHE["data"] and (now - MODELS_CACHE["timestamp"] < CACHE_TTL):
         return MODELS_CACHE["data"]
@@ -230,9 +296,11 @@ async def fetch_openrouter_models(api_key: Optional[str] = None) -> List[Dict[st
             resp = await client.get(f"{OPENROUTER_BASE_URL}/models", headers=headers)
             if resp.status_code == 200:
                 models_data = resp.json().get("data", [])
+                # Sort by popularity descending
+                models_data.sort(key=compute_model_popularity, reverse=True)
                 MODELS_CACHE["data"] = models_data
                 MODELS_CACHE["timestamp"] = now
-                logger.info(f"Loaded {len(models_data)} models from OpenRouter")
+                logger.info(f"Loaded and sorted {len(models_data)} models by popularity from OpenRouter")
                 return models_data
             else:
                 logger.warning(f"Failed to fetch models: HTTP {resp.status_code}")
