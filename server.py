@@ -128,6 +128,32 @@ def extract_openrouter_headers(request: Request) -> Dict[str, str]:
     return extra
 
 
+def normalize_model_id(raw_model: str) -> str:
+    """Normalize model identifier between URL slug formats and canonical OpenRouter IDs.
+    Examples:
+      'z-ai:glm-5.2:free' -> 'z-ai/glm-5.2:free'
+      'z-ai/glm-5.2/free' -> 'z-ai/glm-5.2:free'
+      'anthropic:claude-3.7-sonnet' -> 'anthropic/claude-3.7-sonnet'
+      'openai:gpt-4o:batch' -> 'openai/gpt-4o:batch'
+    """
+    if not raw_model:
+        return ""
+    m = raw_model.strip()
+
+    # If format is author:model:variant (colons only)
+    if "/" not in m and ":" in m:
+        parts = m.split(":", 1)
+        return f"{parts[0]}/{parts[1]}"
+
+    # If format was over-slashed like author/model/free
+    if m.count("/") > 1:
+        parts = m.split("/")
+        tag = ":".join(parts[1:])
+        return f"{parts[0]}/{tag}"
+
+    return m
+
+
 def decode_config_str(config_str: str) -> Dict[str, Any]:
     """
     Decodes configuration from URL path fragment.
@@ -143,10 +169,16 @@ def decode_config_str(config_str: str) -> Dict[str, Any]:
     try:
         if config_str.startswith("b64:"):
             raw = base64.urlsafe_b64decode(config_str[4:]).decode("utf-8")
-            return json.loads(raw)
+            data = json.loads(raw)
+            if "model" in data:
+                data["model"] = normalize_model_id(data["model"])
+            return data
         elif len(config_str) > 8 and not any(c in config_str for c in ["/", ":", "=", ","]):
             raw = base64.urlsafe_b64decode(config_str + "==").decode("utf-8")
-            return json.loads(raw)
+            data = json.loads(raw)
+            if "model" in data:
+                data["model"] = normalize_model_id(data["model"])
+            return data
     except Exception:
         pass
 
@@ -158,8 +190,9 @@ def decode_config_str(config_str: str) -> Dict[str, Any]:
                 k, v = pair.split("=", 1)
                 k = k.strip()
                 v = v.strip()
-                # Type conversions
-                if v.lower() in ("true", "false"):
+                if k == "model":
+                    result["model"] = normalize_model_id(v)
+                elif v.lower() in ("true", "false"):
                     result[k] = v.lower() == "true"
                 else:
                     try:
@@ -171,8 +204,8 @@ def decode_config_str(config_str: str) -> Dict[str, Any]:
                         result[k] = v
         return result
 
-    # Plain model name (colon can replace slash in URL path if needed)
-    model = config_str.replace(":", "/")
+    # Plain model name (only replace the first colon with slash)
+    model = normalize_model_id(config_str)
     return {"model": model}
 
 
@@ -371,7 +404,8 @@ async def handle_proxy_completion(
         body = {}
 
     # Merge configuration: URL config overrides body defaults if specified
-    selected_model = url_config.get("model") or body.get("model") or "anthropic/claude-3.7-sonnet"
+    raw_model = url_config.get("model") or body.get("model") or "anthropic/claude-3.7-sonnet"
+    selected_model = normalize_model_id(raw_model)
     
     # Format model for litellm OpenRouter provider
     if not selected_model.startswith("openrouter/"):
