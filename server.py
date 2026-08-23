@@ -948,6 +948,60 @@ async def web_dashboard(request: Request):
     }
     .btn-small:hover { color: var(--text); background: #262630; }
 
+    /* Saved Presets */
+    .presets-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .presets-save-row {
+      display: flex;
+      gap: 8px;
+    }
+    .presets-save-row input {
+      flex: 1;
+    }
+    .presets-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .preset-card {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .preset-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow: hidden;
+    }
+    .preset-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .preset-details {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-subtle);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .preset-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
     /* Output Endpoint Box */
     .endpoint-item {
       display: flex;
@@ -1125,7 +1179,7 @@ async def web_dashboard(request: Request):
       <div class="endpoint-item">
         <label>Path-Based Base URL (OpenAI SDK / Cursor / Aider / Continue)</label>
         <div class="endpoint-row">
-          <div class="code-box" id="path-url">http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1</div>
+          <div class="code-box" id="path-url">http://localhost:18080/p/anthropic%2Fclaude-3.7-sonnet/v1</div>
           <button onclick="copyElement('path-url')">Copy</button>
         </div>
       </div>
@@ -1133,16 +1187,35 @@ async def web_dashboard(request: Request):
       <div class="endpoint-item">
         <label>Query-String Base URL</label>
         <div class="endpoint-row">
-          <div class="code-box" id="query-url">http://localhost:18080/v1?model=anthropic/claude-3.7-sonnet&temperature=0.7</div>
+          <div class="code-box" id="query-url">http://localhost:18080/v1?model=anthropic%2Fclaude-3.7-sonnet&temperature=0.7</div>
           <button onclick="copyElement('query-url')">Copy</button>
         </div>
       </div>
     </section>
 
-    <!-- 4. Test Console -->
+    <!-- 4. Saved Named Presets -->
     <section>
       <div style="display: flex; justify-content: space-between; align-items: baseline;">
-        <h2>4. Live Test Endpoint</h2>
+        <h2>4. Saved Presets</h2>
+        <span style="font-size: 13px; color: var(--text-subtle);">Stored in browser localStorage</span>
+      </div>
+
+      <div class="presets-container">
+        <div class="presets-save-row">
+          <input type="text" id="preset-name-input" placeholder="Name this configuration (e.g. Claude 3.7 Coding, DeepSeek R1 Fast)...">
+          <button type="button" onclick="saveCurrentPreset()">+ Save Preset</button>
+        </div>
+
+        <div class="presets-list" id="presets-list-items">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Test Console -->
+    <section>
+      <div style="display: flex; justify-content: space-between; align-items: baseline;">
+        <h2>5. Live Test Endpoint</h2>
         <span id="test-time" style="font-family: var(--mono); font-size: 13px; color: var(--text-muted);"></span>
       </div>
 
@@ -1159,17 +1232,22 @@ async def web_dashboard(request: Request):
   <div id="toast">Copied to clipboard</div>
 
   <script>
+    const STORAGE_KEY_STATE = 'or_proxy_state';
+    const STORAGE_KEY_PRESETS = 'or_proxy_presets';
+
     let allModels = [];
     let currentModelObj = null;
     let selectedModel = 'anthropic/claude-3.7-sonnet';
     let supportedModelProviders = []; // providers serving the currently selected model
     let selectedProviders = []; // user prioritized list
+    let isRestoring = false;
 
     document.addEventListener('DOMContentLoaded', () => {
       checkStatus();
       loadModels();
       bindInputs();
       initDragAndDrop();
+      renderPresetsList();
     });
 
     async function checkStatus() {
@@ -1198,8 +1276,14 @@ async def web_dashboard(request: Request):
         allModels = json.data || [];
         renderModelList(allModels);
 
-        const initial = allModels.find(m => m.id === selectedModel) || allModels[0];
-        if (initial) pickModel(initial.id);
+        // Try restoring saved state from localStorage
+        const savedState = loadSavedState();
+        if (savedState && savedState.model) {
+          applyFullState(savedState);
+        } else {
+          const initial = allModels.find(m => m.id === selectedModel) || allModels[0];
+          if (initial) pickModel(initial.id);
+        }
       } catch (e) {
         document.getElementById('models-list').innerHTML = '<div style="padding:14px;color:var(--text-subtle);">Failed to fetch models from OpenRouter.</div>';
       }
@@ -1223,7 +1307,7 @@ async def web_dashboard(request: Request):
       }).join('');
     }
 
-    function pickModel(id) {
+    function pickModel(id, preserveValues = false) {
       selectedModel = id;
       document.getElementById('selected-model-text').textContent = id;
       currentModelObj = allModels.find(x => x.id === id) || { id: id };
@@ -1231,16 +1315,17 @@ async def web_dashboard(request: Request):
       const ctx = Math.round((currentModelObj.context_length || 0) / 1000);
       document.getElementById('selected-model-info').textContent = `${ctx}k context`;
 
-      applyModelAdaptations(currentModelObj);
+      applyModelAdaptations(currentModelObj, preserveValues);
       loadModelProviders(id);
       renderModelList(filterModelsList());
       refreshUrls();
+      saveCurrentState();
     }
 
-    function applyModelAdaptations(model) {
+    function applyModelAdaptations(model, preserveValues = false) {
       if (!model) return;
 
-      // 1. Max Output Tokens: jump directly to the max allowed by the model
+      // 1. Max Output Tokens
       const maxCompletion = model.top_provider?.max_completion_tokens || 
                             model.per_request_limits?.max_tokens || 
                             (model.context_length ? Math.min(model.context_length, 32768) : 8192);
@@ -1249,10 +1334,12 @@ async def web_dashboard(request: Request):
       const maxTokLabel = document.getElementById('lbl-maxtok-limit');
       
       maxTokInput.max = maxCompletion;
-      maxTokInput.value = maxCompletion; // JUMP TO MAX ALLOWED!
+      if (!preserveValues) {
+        maxTokInput.value = maxCompletion; // JUMP TO MAX ALLOWED!
+      }
       maxTokLabel.textContent = `(max: ${maxCompletion.toLocaleString()})`;
 
-      // 2. Reasoning Effort: DISABLED with note if not supported (NOT hidden)
+      // 2. Reasoning Effort
       const supportedParams = model.supported_parameters || [];
       const isReasoning = supportedParams.includes('reasoning') || 
                           supportedParams.includes('include_reasoning') ||
@@ -1268,7 +1355,7 @@ async def web_dashboard(request: Request):
       
       if (isReasoning) {
         reasoningSelect.disabled = false;
-        if (reasoningSelect.value === 'none') {
+        if (!preserveValues && reasoningSelect.value === 'none') {
           reasoningSelect.value = 'medium'; // Auto-default to medium for reasoning models
         }
         reasoningNote.className = 'param-note note-reasoning';
@@ -1280,7 +1367,7 @@ async def web_dashboard(request: Request):
         reasoningNote.textContent = '(Not supported by model)';
       }
 
-      // 3. Temperature: DISABLED with note if not supported
+      // 3. Temperature
       const tempInput = document.getElementById('input-temp');
       const tempNote = document.getElementById('lbl-temp-note');
       if (supportedParams.length > 0 && !supportedParams.includes('temperature')) {
@@ -1315,7 +1402,6 @@ async def web_dashboard(request: Request):
         selectedProviders = selectedProviders.filter(p => supportedModelProviders.includes(p));
         renderProviderList();
 
-        // Populate dropdown with this model's actual supported providers
         populateProviderDropdown();
         refreshUrls();
       } catch (e) {
@@ -1352,13 +1438,22 @@ async def web_dashboard(request: Request):
         const lbl = document.getElementById('lbl-temp');
         if (lbl) lbl.textContent = e.target.value;
         refreshUrls();
+        saveCurrentState();
       });
       document.getElementById('input-topp').addEventListener('input', (e) => {
         document.getElementById('lbl-topp').textContent = e.target.value;
         refreshUrls();
+        saveCurrentState();
       });
-      document.getElementById('input-maxtok').addEventListener('input', refreshUrls);
-      document.getElementById('input-reasoning').addEventListener('change', refreshUrls);
+      document.getElementById('input-maxtok').addEventListener('input', () => {
+        refreshUrls();
+        saveCurrentState();
+      });
+      document.getElementById('input-reasoning').addEventListener('change', () => {
+        refreshUrls();
+        saveCurrentState();
+      });
+      document.getElementById('test-input').addEventListener('input', saveCurrentState);
     }
 
     // Provider Management
@@ -1371,6 +1466,7 @@ async def web_dashboard(request: Request):
         renderProviderList();
         populateProviderDropdown();
         refreshUrls();
+        saveCurrentState();
       }
     }
 
@@ -1379,6 +1475,7 @@ async def web_dashboard(request: Request):
       renderProviderList();
       populateProviderDropdown();
       refreshUrls();
+      saveCurrentState();
     }
 
     function moveProvider(index, direction) {
@@ -1389,6 +1486,7 @@ async def web_dashboard(request: Request):
       selectedProviders[target] = temp;
       renderProviderList();
       refreshUrls();
+      saveCurrentState();
     }
 
     function renderProviderList() {
@@ -1444,6 +1542,7 @@ async def web_dashboard(request: Request):
           selectedProviders.splice(toIdx, 0, moved);
           renderProviderList();
           refreshUrls();
+          saveCurrentState();
         });
       });
     }
@@ -1480,6 +1579,211 @@ async def web_dashboard(request: Request):
       if (v.providers) q.push(`provider_order=${encodeURIComponent(v.providers)}`);
 
       document.getElementById('query-url').textContent = `${origin}/v1?${q.join('&')}`;
+    }
+
+    // --- State Persistence ---
+    function saveCurrentState() {
+      if (isRestoring) return;
+      const v = getValues();
+      const state = {
+        model: v.model,
+        temp: document.getElementById('input-temp').value,
+        topP: document.getElementById('input-topp').value,
+        maxTok: document.getElementById('input-maxtok').value,
+        reasoning: document.getElementById('input-reasoning').value,
+        providers: selectedProviders,
+        testPrompt: document.getElementById('test-input').value
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    function loadSavedState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_STATE);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function applyFullState(state) {
+      if (!state) return;
+      isRestoring = true;
+      
+      if (state.model) {
+        selectedModel = state.model;
+        document.getElementById('selected-model-text').textContent = state.model;
+        currentModelObj = allModels.find(x => x.id === state.model) || { id: state.model };
+        
+        const ctx = Math.round((currentModelObj.context_length || 0) / 1000);
+        document.getElementById('selected-model-info').textContent = `${ctx}k context`;
+      }
+
+      if (state.temp !== undefined) {
+        document.getElementById('input-temp').value = state.temp;
+        const lbl = document.getElementById('lbl-temp');
+        if (lbl) lbl.textContent = state.temp;
+      }
+      if (state.topP !== undefined) {
+        document.getElementById('input-topp').value = state.topP;
+        const lbl = document.getElementById('lbl-topp');
+        if (lbl) lbl.textContent = state.topP;
+      }
+      if (state.maxTok !== undefined) {
+        document.getElementById('input-maxtok').value = state.maxTok;
+      }
+      if (state.reasoning !== undefined) {
+        document.getElementById('input-reasoning').value = state.reasoning;
+      }
+      if (Array.isArray(state.providers)) {
+        selectedProviders = state.providers;
+      }
+      if (state.testPrompt) {
+        document.getElementById('test-input').value = state.testPrompt;
+      }
+
+      applyModelAdaptations(currentModelObj, true);
+      loadModelProviders(selectedModel);
+      renderModelList(filterModelsList());
+      refreshUrls();
+
+      isRestoring = false;
+    }
+
+    // --- Saved Presets Manager ---
+    function getSavedPresets() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_PRESETS);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function setSavedPresets(presets) {
+      try {
+        localStorage.setItem(STORAGE_KEY_PRESETS, JSON.stringify(presets));
+      } catch (e) {}
+    }
+
+    function saveCurrentPreset() {
+      const input = document.getElementById('preset-name-input');
+      const name = input.value.trim();
+      if (!name) {
+        alert('Please enter a name for this preset.');
+        return;
+      }
+
+      const v = getValues();
+      const origin = window.location.origin;
+      const slug = encodeURIComponent(v.model);
+      const url = `${origin}/p/${slug}/v1`;
+
+      const preset = {
+        id: 'preset_' + Date.now(),
+        name: name,
+        createdAt: new Date().toISOString(),
+        config: {
+          model: v.model,
+          temp: document.getElementById('input-temp').value,
+          topP: document.getElementById('input-topp').value,
+          maxTok: document.getElementById('input-maxtok').value,
+          reasoning: document.getElementById('input-reasoning').value,
+          providers: [...selectedProviders],
+          testPrompt: document.getElementById('test-input').value
+        },
+        url: url
+      };
+
+      const presets = getSavedPresets();
+      presets.unshift(preset);
+      setSavedPresets(presets);
+
+      input.value = '';
+      renderPresetsList();
+      showToast(`Preset "${name}" saved!`);
+    }
+
+    function deletePreset(id) {
+      let presets = getSavedPresets();
+      presets = presets.filter(p => p.id !== id);
+      setSavedPresets(presets);
+      renderPresetsList();
+      showToast('Preset deleted.');
+    }
+
+    function renamePreset(id) {
+      const presets = getSavedPresets();
+      const preset = presets.find(p => p.id === id);
+      if (!preset) return;
+
+      const newName = prompt('Enter new preset name:', preset.name);
+      if (newName && newName.trim()) {
+        preset.name = newName.trim();
+        setSavedPresets(presets);
+        renderPresetsList();
+        showToast('Preset renamed.');
+      }
+    }
+
+    function loadPreset(id) {
+      const presets = getSavedPresets();
+      const preset = presets.find(p => p.id === id);
+      if (!preset) return;
+
+      applyFullState(preset.config);
+      saveCurrentState();
+      showToast(`Loaded preset "${preset.name}"`);
+    }
+
+    function copyPresetUrl(id) {
+      const presets = getSavedPresets();
+      const preset = presets.find(p => p.id === id);
+      if (!preset) return;
+
+      const origin = window.location.origin;
+      const slug = encodeURIComponent(preset.config.model);
+      const url = `${origin}/p/${slug}/v1`;
+      navigator.clipboard.writeText(url);
+      showToast('Preset URL copied to clipboard!');
+    }
+
+    function renderPresetsList() {
+      const container = document.getElementById('presets-list-items');
+      const presets = getSavedPresets();
+
+      if (!presets.length) {
+        container.innerHTML = '<div style="font-size:13px;color:var(--text-subtle);padding:8px 0;">No saved presets yet. Type a name above and click "+ Save Preset" to bookmark configurations.</div>';
+        return;
+      }
+
+      container.innerHTML = presets.map(p => {
+        const c = p.config;
+        const details = [
+          c.model,
+          `temp: ${c.temp}`,
+          `max_tokens: ${Number(c.maxTok).toLocaleString()}`
+        ];
+        if (c.reasoning && c.reasoning !== 'none') details.push(`reasoning: ${c.reasoning}`);
+        if (c.providers && c.providers.length) details.push(`routing: ${c.providers.join(' > ')}`);
+
+        return `
+          <div class="preset-card">
+            <div class="preset-info">
+              <div class="preset-title">${p.name}</div>
+              <div class="preset-details">${details.join(' • ')}</div>
+            </div>
+            <div class="preset-actions">
+              <button type="button" class="btn-small" onclick="loadPreset('${p.id}')">Load</button>
+              <button type="button" class="btn-small" onclick="copyPresetUrl('${p.id}')">Copy URL</button>
+              <button type="button" class="btn-small" onclick="renamePreset('${p.id}')">Rename</button>
+              <button type="button" class="btn-small" onclick="deletePreset('${p.id}')">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     async function sendTest() {
@@ -1558,12 +1862,17 @@ async def web_dashboard(request: Request):
       }
     }
 
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.style.opacity = '1';
+      setTimeout(() => { toast.style.opacity = '0'; }, 1800);
+    }
+
     function copyElement(id) {
       const text = document.getElementById(id).textContent.trim();
       navigator.clipboard.writeText(text);
-      const toast = document.getElementById('toast');
-      toast.style.opacity = '1';
-      setTimeout(() => { toast.style.opacity = '0'; }, 1500);
+      showToast('Copied to clipboard');
     }
   </script>
 </body>
