@@ -573,8 +573,49 @@ async def get_model_endpoints(model_slug: str, model_author: Optional[str] = Non
 @app.get("/p/{config_path:path}/v1/models")
 @app.get("/cfg/{b64_config}/v1/models")
 async def list_v1_models(request: Request, config_path: Optional[str] = None, b64_config: Optional[str] = None):
-    """OpenAI-compatible models list endpoint."""
+    """OpenAI-compatible models list endpoint.
+    If a model is configured in the URL (path or query string), returns only that model.
+    """
+    path_param = config_path if config_path else (f"b64:{b64_config}" if b64_config else None)
+    url_config = extract_url_config(request, path_param=path_param)
+    configured_model = url_config.get("model")
+
     models = await fetch_openrouter_models(get_api_key(request))
+    
+    # If a specific model is configured in the URL, filter to only that model
+    if configured_model:
+        matched = None
+        for m in models:
+            if m.get("id", "").lower() == configured_model.lower():
+                matched = m
+                break
+        
+        if matched:
+            model_entry = {
+                "id": matched.get("id"),
+                "object": "model",
+                "created": matched.get("created", int(time.time())),
+                "owned_by": matched.get("id", "").split("/")[0] if "/" in matched.get("id", "") else "openrouter",
+                "context_length": matched.get("context_length", 8192),
+                "pricing": matched.get("pricing", {}),
+                "name": matched.get("name", matched.get("id")),
+                "description": matched.get("description", "")
+            }
+        else:
+            # Fallback entry for custom model IDs
+            model_entry = {
+                "id": configured_model,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": configured_model.split("/")[0] if "/" in configured_model else "openrouter",
+                "context_length": 8192,
+                "pricing": {},
+                "name": configured_model,
+                "description": "Configured OpenRouter model"
+            }
+        return {"object": "list", "data": [model_entry]}
+
+    # Otherwise return all models
     openai_models = []
     for m in models:
         openai_models.append({
@@ -588,6 +629,36 @@ async def list_v1_models(request: Request, config_path: Optional[str] = None, b6
             "description": m.get("description", "")
         })
     return {"object": "list", "data": openai_models}
+
+
+@app.get("/v1/models/{model_id:path}")
+@app.get("/p/{config_path:path}/v1/models/{model_id:path}")
+async def get_single_v1_model(model_id: str, request: Request, config_path: Optional[str] = None):
+    """OpenAI-compatible single model retrieval endpoint."""
+    models = await fetch_openrouter_models(get_api_key(request))
+    clean_id = model_id.replace(":", "/")
+    for m in models:
+        if m.get("id", "").lower() == clean_id.lower():
+            return {
+                "id": m.get("id"),
+                "object": "model",
+                "created": m.get("created", int(time.time())),
+                "owned_by": m.get("id", "").split("/")[0] if "/" in m.get("id", "") else "openrouter",
+                "context_length": m.get("context_length", 8192),
+                "pricing": m.get("pricing", {}),
+                "name": m.get("name", m.get("id")),
+                "description": m.get("description", "")
+            }
+    return {
+        "id": clean_id,
+        "object": "model",
+        "created": int(time.time()),
+        "owned_by": clean_id.split("/")[0] if "/" in clean_id else "openrouter",
+        "context_length": 8192,
+        "pricing": {},
+        "name": clean_id,
+        "description": ""
+    }
 
 
 # ------------------------------------------------------------------------------
