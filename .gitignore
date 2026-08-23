@@ -8,6 +8,9 @@ env/
 .venv/
 venv/
 ENV/
+*.egg-info/
+dist/
+build/
 
 # Environment secrets
 .env
