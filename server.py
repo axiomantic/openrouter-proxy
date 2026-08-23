@@ -156,42 +156,41 @@ def normalize_model_id(raw_model: str) -> str:
 
 def decode_config_str(config_str: str) -> Dict[str, Any]:
     """
-    Decodes configuration from URL path fragment.
+    Decodes configuration from standard URL path fragment.
+    Fully supports standard percent-encoded URLs (e.g. encodeURIComponent).
     Supports:
-      1. Plain model slug: "anthropic/claude-3.7-sonnet" or "anthropic:claude-3.7-sonnet"
-      2. Key-value pairs: "model=openai/gpt-4o,temp=0.7,max_tokens=2048"
-      3. Base64-encoded JSON: "eyJtb2RlbCI6ICJnb29nbGUvZ2VtaW5pLTIuNS1wcm8ifQ=="
+      1. Standard URL-encoded model ID: "anthropic%2Fclaude-3.7-sonnet", "z-ai%2Fglm-5.2%3Afree"
+      2. Direct path model string: "anthropic/claude-3.7-sonnet", "z-ai/glm-5.2:free"
+      3. Key-value pairs: "model=openai/gpt-4o,temp=0.7,max_tokens=2048"
+      4. Base64-encoded JSON: "eyJtb2RlbCI6ICJnb29nbGUvZ2VtaW5pLTIuNS1wcm8ifQ=="
     """
     if not config_str:
         return {}
 
+    # Unescape percent-encoding
+    raw_str = unquote(config_str).strip()
+
     # Try Base64 JSON
     try:
-        if config_str.startswith("b64:"):
-            raw = base64.urlsafe_b64decode(config_str[4:]).decode("utf-8")
-            data = json.loads(raw)
-            if "model" in data:
-                data["model"] = normalize_model_id(data["model"])
-            return data
-        elif len(config_str) > 8 and not any(c in config_str for c in ["/", ":", "=", ","]):
-            raw = base64.urlsafe_b64decode(config_str + "==").decode("utf-8")
-            data = json.loads(raw)
-            if "model" in data:
-                data["model"] = normalize_model_id(data["model"])
-            return data
+        if raw_str.startswith("b64:"):
+            raw = base64.urlsafe_b64decode(raw_str[4:]).decode("utf-8")
+            return json.loads(raw)
+        elif len(raw_str) > 8 and not any(c in raw_str for c in ["/", ":", "=", ","]):
+            raw = base64.urlsafe_b64decode(raw_str + "==").decode("utf-8")
+            return json.loads(raw)
     except Exception:
         pass
 
     # Try comma-separated key-value pairs (e.g. model=x,temperature=0.7)
-    if "=" in config_str:
+    if "=" in raw_str:
         result = {}
-        for pair in config_str.split(","):
+        for pair in raw_str.split(","):
             if "=" in pair:
                 k, v = pair.split("=", 1)
                 k = k.strip()
                 v = v.strip()
                 if k == "model":
-                    result["model"] = normalize_model_id(v)
+                    result["model"] = v
                 elif v.lower() in ("true", "false"):
                     result[k] = v.lower() == "true"
                 else:
@@ -204,9 +203,8 @@ def decode_config_str(config_str: str) -> Dict[str, Any]:
                         result[k] = v
         return result
 
-    # Plain model name (only replace the first colon with slash)
-    model = normalize_model_id(config_str)
-    return {"model": model}
+    # Plain model ID directly from URL
+    return {"model": raw_str}
 
 
 def extract_url_config(request: Request, path_param: Optional[str] = None) -> Dict[str, Any]:
@@ -217,7 +215,7 @@ def extract_url_config(request: Request, path_param: Optional[str] = None) -> Di
     config: Dict[str, Any] = {}
 
     if path_param:
-        config.update(decode_config_str(unquote(path_param)))
+        config.update(decode_config_str(path_param))
 
     # Parse query parameters
     query_params = request.query_params
@@ -1467,7 +1465,7 @@ async def web_dashboard(request: Request):
     function refreshUrls() {
       const origin = window.location.origin;
       const v = getValues();
-      const slug = v.model.replace('/', ':');
+      const slug = encodeURIComponent(v.model);
 
       // 1. Path-based URL
       const pathUrl = `${origin}/p/${slug}/v1`;
@@ -1499,7 +1497,7 @@ async def web_dashboard(request: Request):
       timeEl.textContent = '';
 
       const start = performance.now();
-      const slug = v.model.replace('/', ':');
+      const slug = encodeURIComponent(v.model);
 
       try {
         const payload = {
