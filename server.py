@@ -1797,7 +1797,8 @@ async def web_dashboard(request: Request):
 
       btn.disabled = true;
       btn.textContent = '...';
-      output.textContent = '';
+      output.style.color = 'var(--text)';
+      output.textContent = 'Connecting and generating...';
       timeEl.textContent = '';
 
       const start = performance.now();
@@ -1826,13 +1827,21 @@ async def web_dashboard(request: Request):
         });
 
         if (!res.ok) {
-          output.textContent = `HTTP ${res.status}: ${await res.text()}`;
+          const rawText = await res.text();
+          let errMsg = rawText;
+          try {
+            const errJson = JSON.parse(rawText);
+            errMsg = errJson.error?.message || errJson.message || rawText;
+          } catch (e) {}
+          output.style.color = '#f87171';
+          output.textContent = `❌ HTTP ${res.status}: ${errMsg}`;
           return;
         }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let full = '';
+        let hasError = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1845,17 +1854,35 @@ async def web_dashboard(request: Request):
               if (dataStr === '[DONE]') continue;
               try {
                 const parsed = JSON.parse(dataStr);
+                
+                // Handle streaming error payload
+                if (parsed.error) {
+                  hasError = true;
+                  output.style.color = '#f87171';
+                  const errMsg = parsed.error.message || JSON.stringify(parsed.error);
+                  output.textContent = full ? `${full}\\n\\n❌ Error: ${errMsg}` : `❌ Error: ${errMsg}`;
+                  continue;
+                }
+
                 const delta = parsed.choices?.[0]?.delta?.content || '';
                 full += delta;
-                output.textContent = full;
+                if (!hasError) {
+                  output.textContent = full || '...';
+                }
               } catch (e) {}
             }
           }
         }
+        
+        if (!full && !hasError) {
+          output.textContent = '(Empty response received from model)';
+        }
+
         const took = ((performance.now() - start) / 1000).toFixed(2);
         timeEl.textContent = `${took}s`;
       } catch (e) {
-        output.textContent = `Error: ${e.message}`;
+        output.style.color = '#f87171';
+        output.textContent = `❌ Request Failed: ${e.message}`;
       } finally {
         btn.disabled = false;
         btn.textContent = 'Send';
