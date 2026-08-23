@@ -44,7 +44,7 @@ case "$1" in
         echo "Restarting ${SERVICE_LABEL}..."
         if [ -f "${PLIST_DEST}" ]; then
             launchctl unload -w "${PLIST_DEST}" 2>/dev/null || true
-            sleep 1
+            sleep 2
             launchctl load -w "${PLIST_DEST}"
             echo "Service restarted."
         else

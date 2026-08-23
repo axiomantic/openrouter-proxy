@@ -471,7 +471,7 @@ async def alternate_chat_completions(request: Request, config_path: Optional[str
 @app.head("/")
 @app.head("/ui")
 async def web_dashboard(request: Request):
-    """Large-type, unboxed, minimalist configuration generator."""
+    """Large-type, model-reactive, unboxed configuration generator."""
     html_content = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -482,6 +482,7 @@ async def web_dashboard(request: Request):
     :root {
       --bg: #0c0c0e;
       --input-bg: #16161a;
+      --item-bg: #1e1e24;
       --border: #2c2c34;
       --border-focus: #71717a;
       --text: #f4f4f6;
@@ -553,7 +554,7 @@ async def web_dashboard(request: Request):
       color: var(--text);
       font-weight: 500;
     }
-    input[type="text"], input[type="number"], select, textarea {
+    input[type="text"], input[type="number"], select {
       width: 100%;
       background: var(--input-bg);
       border: 1px solid var(--border);
@@ -565,7 +566,7 @@ async def web_dashboard(request: Request):
       outline: none;
       transition: border-color 0.15s;
     }
-    input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+    input[type="text"]:focus, input[type="number"]:focus, select:focus {
       border-color: var(--border-focus);
     }
     input[type="range"] {
@@ -576,14 +577,14 @@ async def web_dashboard(request: Request):
       cursor: pointer;
     }
 
-    /* Model select helper */
+    /* Model select list */
     .model-selector {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
     .model-list-box {
-      max-height: 180px;
+      max-height: 200px;
       overflow-y: auto;
       background: var(--input-bg);
       border: 1px solid var(--border);
@@ -596,6 +597,7 @@ async def web_dashboard(request: Request):
       cursor: pointer;
       display: flex;
       justify-content: space-between;
+      align-items: center;
       border-bottom: 1px solid #1f1f26;
     }
     .model-option:last-child { border-bottom: none; }
@@ -610,6 +612,59 @@ async def web_dashboard(request: Request):
       gap: 20px;
     }
     @media (max-width: 600px) { .params-grid { grid-template-columns: 1fr; } }
+
+    /* Draggable Provider Order */
+    .provider-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .provider-add-row {
+      display: flex;
+      gap: 8px;
+    }
+    .provider-add-row select {
+      flex: 1;
+    }
+    .provider-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 10px;
+    }
+    .provider-item {
+      background: var(--item-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: grab;
+      user-select: none;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .provider-item:active { cursor: grabbing; }
+    .provider-item.dragging { opacity: 0.4; background: #2a2a34; }
+    .provider-drag-handle {
+      color: var(--text-subtle);
+      font-family: var(--mono);
+      font-size: 14px;
+      margin-right: 8px;
+    }
+    .provider-actions {
+      display: flex;
+      gap: 4px;
+    }
+    .btn-small {
+      padding: 2px 8px;
+      font-size: 12px;
+      border-radius: 4px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .btn-small:hover { color: var(--text); background: #262630; }
 
     /* Output Endpoint Box */
     .endpoint-item {
@@ -650,9 +705,7 @@ async def web_dashboard(request: Request):
       background: #22222a;
       border-color: var(--border-focus);
     }
-    button:active {
-      transform: scale(0.99);
-    }
+    button:active { transform: scale(0.99); }
 
     /* Test prompt */
     .test-box {
@@ -672,6 +725,9 @@ async def web_dashboard(request: Request):
       overflow-y: auto;
       white-space: pre-wrap;
     }
+
+    /* Hidden element */
+    .hidden { display: none !important; }
 
     /* Toast */
     #toast {
@@ -704,7 +760,7 @@ async def web_dashboard(request: Request):
     <section>
       <h2>1. Choose Model</h2>
       <div class="model-selector">
-        <input type="text" id="model-search" placeholder="Type to filter models (e.g. claude, gpt-4o, deepseek, sonnet)..." autocomplete="off">
+        <input type="text" id="model-search" placeholder="Filter models by name or provider (e.g. claude, gpt-4o, deepseek)..." autocomplete="off">
         <div class="model-list-box" id="models-list">
           <div style="padding: 14px; color: var(--text-subtle);">Loading models...</div>
         </div>
@@ -715,42 +771,75 @@ async def web_dashboard(request: Request):
       </div>
     </section>
 
-    <!-- 2. Parameters -->
+    <!-- 2. Dynamic Model Parameters -->
     <section>
-      <h2>2. Parameters (Optional)</h2>
+      <h2>2. Model Parameters</h2>
 
       <div class="params-grid">
-        <div>
+        <!-- Temperature -->
+        <div id="wrapper-temp">
           <label>Temperature <span id="lbl-temp">0.7</span></label>
           <input type="range" id="input-temp" min="0" max="2" step="0.05" value="0.7">
         </div>
-        <div>
+
+        <!-- Top P -->
+        <div id="wrapper-topp">
           <label>Top P <span id="lbl-topp">1.0</span></label>
           <input type="range" id="input-topp" min="0" max="1" step="0.05" value="1.0">
         </div>
-        <div>
-          <label>Max Output Tokens</label>
-          <input type="number" id="input-maxtok" min="1" max="128000" step="256" value="4096">
+
+        <!-- Max Output Tokens (Dynamically bounded by model) -->
+        <div id="wrapper-maxtok">
+          <label>Max Output Tokens <span id="lbl-maxtok-limit" style="font-size: 13px; color: var(--text-subtle);">(max: 8192)</span></label>
+          <input type="number" id="input-maxtok" min="1" max="8192" step="256" value="4096">
         </div>
-        <div>
-          <label>Reasoning Effort</label>
+
+        <!-- Reasoning Effort (Visible ONLY if supported by model) -->
+        <div id="wrapper-reasoning" class="hidden">
+          <label>Reasoning Effort <span style="font-size: 12px; color: #a78bfa;">CoT Supported</span></label>
           <select id="input-reasoning">
-            <option value="none">Default / None</option>
-            <option value="low">Low Effort</option>
-            <option value="medium">Medium Effort</option>
-            <option value="high">High Effort (Deep Reason)</option>
+            <option value="none">Default (None)</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High (Deep Reason)</option>
           </select>
         </div>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 6px;">
-        <label>System Prompt Override</label>
-        <input type="text" id="input-sysprompt" placeholder="Optional system instruction...">
-      </div>
+      <!-- Provider Order Preference (Draggable & Dropdown) -->
+      <div class="provider-container">
+        <label>Provider Order Preference <span style="font-size: 13px; color: var(--text-subtle);">Priority fallback routing</span></label>
+        
+        <div class="provider-add-row">
+          <select id="provider-select">
+            <option value="">-- Add a Provider --</option>
+            <option value="Together">Together</option>
+            <option value="Fireworks">Fireworks</option>
+            <option value="DeepInfra">DeepInfra</option>
+            <option value="Groq">Groq</option>
+            <option value="Cerebras">Cerebras</option>
+            <option value="SambaNova">SambaNova</option>
+            <option value="Novita">Novita</option>
+            <option value="Nebius">Nebius</option>
+            <option value="Chutes">Chutes</option>
+            <option value="Hyperbolic">Hyperbolic</option>
+            <option value="OctoAI">OctoAI</option>
+            <option value="LePlanet">LePlanet</option>
+            <option value="Anthropic">Anthropic</option>
+            <option value="OpenAI">OpenAI</option>
+            <option value="Google">Google</option>
+            <option value="DeepSeek">DeepSeek</option>
+            <option value="Mistral">Mistral</option>
+            <option value="Azure">Azure</option>
+            <option value="AWS">AWS</option>
+          </select>
+          <button type="button" onclick="addProvider()">+ Add</button>
+        </div>
 
-      <div style="display: flex; flex-direction: column; gap: 6px;">
-        <label>Provider Order Preference</label>
-        <input type="text" id="input-providers" placeholder="e.g. Together,Fireworks,DeepInfra">
+        <!-- Drag-and-drop provider priority list -->
+        <div class="provider-list" id="provider-list-items">
+          <!-- Populated dynamically -->
+        </div>
       </div>
     </section>
 
@@ -796,13 +885,15 @@ async def web_dashboard(request: Request):
 
   <script>
     let allModels = [];
+    let currentModelObj = null;
     let selectedModel = 'anthropic/claude-3.7-sonnet';
+    let selectedProviders = []; // array of provider names
 
     document.addEventListener('DOMContentLoaded', () => {
       checkStatus();
       loadModels();
       bindInputs();
-      refreshUrls();
+      initDragAndDrop();
     });
 
     async function checkStatus() {
@@ -830,6 +921,9 @@ async def web_dashboard(request: Request):
         const json = await res.json();
         allModels = json.data || [];
         renderModelList(allModels);
+
+        const initial = allModels.find(m => m.id === selectedModel) || allModels[0];
+        if (initial) pickModel(initial.id);
       } catch (e) {
         document.getElementById('models-list').innerHTML = '<div style="padding:14px;color:var(--text-subtle);">Failed to fetch models from OpenRouter.</div>';
       }
@@ -856,13 +950,61 @@ async def web_dashboard(request: Request):
     function pickModel(id) {
       selectedModel = id;
       document.getElementById('selected-model-text').textContent = id;
-      const m = allModels.find(x => x.id === id);
-      if (m) {
-        const ctx = Math.round((m.context_length || 0) / 1000);
-        document.getElementById('selected-model-info').textContent = `${ctx}k context`;
-      }
+      currentModelObj = allModels.find(x => x.id === id) || { id: id };
+      
+      const ctx = Math.round((currentModelObj.context_length || 0) / 1000);
+      document.getElementById('selected-model-info').textContent = `${ctx}k context`;
+
+      applyModelAdaptations(currentModelObj);
       renderModelList(filterModelsList());
       refreshUrls();
+    }
+
+    function applyModelAdaptations(model) {
+      if (!model) return;
+
+      // 1. Max Output Tokens correlation
+      const maxCompletion = model.top_provider?.max_completion_tokens || 
+                            model.per_request_limits?.max_tokens || 
+                            (model.context_length ? Math.min(model.context_length, 32768) : 8192);
+      
+      const maxTokInput = document.getElementById('input-maxtok');
+      const maxTokLabel = document.getElementById('lbl-maxtok-limit');
+      
+      maxTokInput.max = maxCompletion;
+      maxTokLabel.textContent = `(max: ${maxCompletion.toLocaleString()})`;
+      
+      // If current value exceeds model limit, clamp it down
+      if (parseInt(maxTokInput.value, 10) > maxCompletion) {
+        maxTokInput.value = maxCompletion;
+      }
+
+      // 2. Reasoning Effort Availability
+      const supportedParams = model.supported_parameters || [];
+      const isReasoning = supportedParams.includes('reasoning') || 
+                          supportedParams.includes('include_reasoning') ||
+                          model.id.includes('r1') || 
+                          model.id.includes('o1') || 
+                          model.id.includes('o3') || 
+                          model.id.includes('claude-3.7-sonnet') ||
+                          model.id.includes('thinking') ||
+                          model.id.includes('qwq');
+
+      const reasoningWrapper = document.getElementById('wrapper-reasoning');
+      if (isReasoning) {
+        reasoningWrapper.classList.remove('hidden');
+      } else {
+        reasoningWrapper.classList.add('hidden');
+        document.getElementById('input-reasoning').value = 'none';
+      }
+
+      // 3. Temperature support (some reasoning models fixed temp)
+      const tempWrapper = document.getElementById('wrapper-temp');
+      if (supportedParams.length > 0 && !supportedParams.includes('temperature')) {
+        tempWrapper.classList.add('hidden');
+      } else {
+        tempWrapper.classList.remove('hidden');
+      }
     }
 
     function filterModelsList() {
@@ -885,19 +1027,105 @@ async def web_dashboard(request: Request):
       });
       document.getElementById('input-maxtok').addEventListener('input', refreshUrls);
       document.getElementById('input-reasoning').addEventListener('change', refreshUrls);
-      document.getElementById('input-sysprompt').addEventListener('input', refreshUrls);
-      document.getElementById('input-providers').addEventListener('input', refreshUrls);
+    }
+
+    // Provider Management
+    function addProvider() {
+      const select = document.getElementById('provider-select');
+      const val = select.value;
+      if (!val) return;
+      if (!selectedProviders.includes(val)) {
+        selectedProviders.push(val);
+        renderProviderList();
+        refreshUrls();
+      }
+      select.value = '';
+    }
+
+    function removeProvider(index) {
+      selectedProviders.splice(index, 1);
+      renderProviderList();
+      refreshUrls();
+    }
+
+    function moveProvider(index, direction) {
+      const target = index + direction;
+      if (target < 0 || target >= selectedProviders.length) return;
+      const temp = selectedProviders[index];
+      selectedProviders[index] = selectedProviders[target];
+      selectedProviders[target] = temp;
+      renderProviderList();
+      refreshUrls();
+    }
+
+    function renderProviderList() {
+      const listEl = document.getElementById('provider-list-items');
+      if (selectedProviders.length === 0) {
+        listEl.innerHTML = '<div style="font-size:13px;color:var(--text-subtle);padding:4px 0;">No provider order specified (OpenRouter default routing).</div>';
+        return;
+      }
+
+      listEl.innerHTML = selectedProviders.map((p, idx) => `
+        <div class="provider-item" draggable="true" data-index="${idx}">
+          <div style="display:flex;align-items:center;">
+            <span class="provider-drag-handle">⠿</span>
+            <span style="font-family:var(--mono);font-size:14px;">${idx + 1}. ${p}</span>
+          </div>
+          <div class="provider-actions">
+            <button type="button" class="btn-small" onclick="moveProvider(${idx}, -1)">▲</button>
+            <button type="button" class="btn-small" onclick="moveProvider(${idx}, 1)">▼</button>
+            <button type="button" class="btn-small" onclick="removeProvider(${idx})">✕</button>
+          </div>
+        </div>
+      `).join('');
+
+      initDragAndDrop();
+    }
+
+    function initDragAndDrop() {
+      const items = document.querySelectorAll('.provider-item');
+      let draggedItem = null;
+
+      items.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+          draggedItem = item;
+          setTimeout(() => item.classList.add('dragging'), 0);
+        });
+
+        item.addEventListener('dragend', () => {
+          if (draggedItem) draggedItem.classList.remove('dragging');
+          draggedItem = null;
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          if (!draggedItem || draggedItem === item) return;
+          const fromIdx = parseInt(draggedItem.dataset.index, 10);
+          const toIdx = parseInt(item.dataset.index, 10);
+          
+          const moved = selectedProviders.splice(fromIdx, 1)[0];
+          selectedProviders.splice(toIdx, 0, moved);
+          renderProviderList();
+          refreshUrls();
+        });
+      });
     }
 
     function getValues() {
+      const reasoningVisible = !document.getElementById('wrapper-reasoning').classList.contains('hidden');
+      const tempVisible = !document.getElementById('wrapper-temp').classList.contains('hidden');
+      
       return {
         model: selectedModel,
-        temp: parseFloat(document.getElementById('input-temp').value),
+        temp: tempVisible ? parseFloat(document.getElementById('input-temp').value) : undefined,
         topP: parseFloat(document.getElementById('input-topp').value),
         maxTok: parseInt(document.getElementById('input-maxtok').value, 10),
-        reasoning: document.getElementById('input-reasoning').value,
-        sysPrompt: document.getElementById('input-sysprompt').value.trim(),
-        providers: document.getElementById('input-providers').value.trim()
+        reasoning: reasoningVisible ? document.getElementById('input-reasoning').value : 'none',
+        providers: selectedProviders.join(',')
       };
     }
 
@@ -906,16 +1134,16 @@ async def web_dashboard(request: Request):
       const v = getValues();
       const slug = v.model.replace('/', ':');
 
-      // 1. Path-based
+      // 1. Path-based URL
       const pathUrl = `${origin}/p/${slug}/v1`;
       document.getElementById('path-url').textContent = pathUrl;
 
-      // 2. Query string
+      // 2. Query string URL
       const q = [`model=${encodeURIComponent(v.model)}`];
-      if (v.temp !== 0.7) q.push(`temperature=${v.temp}`);
+      if (v.temp !== undefined && v.temp !== 0.7) q.push(`temperature=${v.temp}`);
       if (v.topP !== 1.0) q.push(`top_p=${v.topP}`);
-      if (v.maxTok !== 4096) q.push(`max_tokens=${v.maxTok}`);
-      if (v.reasoning !== 'none') q.push(`reasoning_effort=${v.reasoning}`);
+      if (v.maxTok && v.maxTok !== 4096) q.push(`max_tokens=${v.maxTok}`);
+      if (v.reasoning && v.reasoning !== 'none') q.push(`reasoning_effort=${v.reasoning}`);
       if (v.providers) q.push(`provider_order=${encodeURIComponent(v.providers)}`);
 
       document.getElementById('query-url').textContent = `${origin}/v1?${q.join('&')}`;
@@ -941,13 +1169,15 @@ async def web_dashboard(request: Request):
       try {
         const payload = {
           messages: [{ role: 'user', content: prompt }],
-          temperature: v.temp,
           top_p: v.topP,
           max_tokens: v.maxTok,
           stream: true
         };
+        if (v.temp !== undefined) payload.temperature = v.temp;
         if (v.reasoning !== 'none') payload.reasoning_effort = v.reasoning;
-        if (v.sysPrompt) payload.messages.unshift({ role: 'system', content: v.sysPrompt });
+        if (v.providers) {
+          payload.extra_body = { provider: { order: selectedProviders } };
+        }
 
         const res = await fetch(`/p/${slug}/v1/chat/completions`, {
           method: 'POST',
