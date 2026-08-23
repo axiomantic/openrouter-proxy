@@ -782,11 +782,43 @@ async def web_dashboard(request: Request):
       -webkit-font-smoothing: antialiased;
     }
     .wrap {
-      max-width: 780px;
+      max-width: 1140px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
-      gap: 40px;
+      gap: 32px;
+    }
+
+    /* Layout grid: Main Configurator + Sidebar */
+    .app-layout {
+      display: grid;
+      grid-template-columns: 1fr 330px;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (max-width: 880px) {
+      .app-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .main-col {
+      display: flex;
+      flex-direction: column;
+      gap: 36px;
+    }
+
+    /* Sidebar */
+    .sidebar-col {
+      position: sticky;
+      top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: #111116;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
     }
 
     /* Header */
@@ -954,7 +986,7 @@ async def web_dashboard(request: Request):
       gap: 4px;
     }
     .btn-small {
-      padding: 2px 8px;
+      padding: 3px 8px;
       font-size: 12px;
       border-radius: 4px;
       background: var(--input-bg);
@@ -963,34 +995,62 @@ async def web_dashboard(request: Request):
     }
     .btn-small:hover { color: var(--text); background: #262630; }
 
-    /* Saved Presets */
+    /* Saved Presets Sidebar */
+    .sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .badge {
+      font-size: 11px;
+      font-family: var(--mono);
+      background: #27272a;
+      color: #a1a1aa;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
     .presets-container {
       display: flex;
       flex-direction: column;
       gap: 12px;
-      margin-top: 8px;
     }
     .presets-save-row {
       display: flex;
+      flex-direction: column;
       gap: 8px;
     }
-    .presets-save-row input {
-      flex: 1;
+    .presets-save-row button {
+      background: #1e293b;
+      border: 1px solid #3b82f6;
+      color: #60a5fa;
+      font-weight: 600;
+      padding: 8px;
+    }
+    .presets-save-row button:hover {
+      background: #2563eb;
+      color: #ffffff;
     }
     .presets-list {
       display: flex;
       flex-direction: column;
       gap: 8px;
+      max-height: 480px;
+      overflow-y: auto;
     }
     .preset-card {
       background: var(--input-bg);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.15s;
+    }
+    .preset-card:hover {
+      border-color: #52525b;
     }
     .preset-info {
       display: flex;
@@ -999,25 +1059,25 @@ async def web_dashboard(request: Request):
       overflow: hidden;
     }
     .preset-title {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
-      color: var(--text);
+      color: #f4f4f6;
     }
     .preset-details {
       font-family: var(--mono);
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-subtle);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      word-break: break-all;
+      line-height: 1.4;
     }
     .preset-actions {
       display: flex;
-      gap: 6px;
-      flex-shrink: 0;
+      gap: 4px;
+      justify-content: flex-end;
     }
 
-    /* Output Endpoint Box */
+    /* Output Endpoint Box - High Visibility Vivid Blue / Cyan */
     .endpoint-item {
       display: flex;
       flex-direction: column;
@@ -1028,18 +1088,43 @@ async def web_dashboard(request: Request):
       align-items: stretch;
       gap: 8px;
     }
-    .code-box {
+    .code-box-vivid {
       flex: 1;
-      background: var(--input-bg);
-      border: 1px solid var(--border);
+      background: #081e2b;
+      border: 1px solid #0284c7;
       border-radius: 6px;
-      padding: 12px 14px;
+      padding: 12px 16px;
       font-family: var(--mono);
-      font-size: 14px;
-      color: var(--text);
+      font-size: 15px;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: -0.01em;
       word-break: break-all;
       user-select: all;
+      box-shadow: 0 0 12px rgba(2, 132, 199, 0.15);
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
+    .code-box-vivid:hover {
+      border-color: #38bdf8;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+    }
+    .btn-copy-vivid {
+      background: #0369a1;
+      border: 1px solid #38bdf8;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 0 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-copy-vivid:hover {
+      background: #0284c7;
+    }
+    .btn-copy-vivid:active { transform: scale(0.98); }
+
     button {
       background: var(--input-bg);
       border: 1px solid var(--border);
@@ -1091,6 +1176,7 @@ async def web_dashboard(request: Request):
       opacity: 0;
       transition: opacity 0.15s;
       pointer-events: none;
+      z-index: 999;
     }
   </style>
 </head>
@@ -1104,143 +1190,153 @@ async def web_dashboard(request: Request):
       <div class="status" id="status-indicator">connecting...</div>
     </header>
 
-    <!-- 1. Model Selection -->
-    <section>
-      <h2>1. Choose Model</h2>
-      <div class="model-selector">
-        <input type="text" id="model-search" placeholder="Filter models by name or provider (e.g. claude, gpt-4o, deepseek)..." autocomplete="off">
-        <div class="model-list-box" id="models-list">
-          <div style="padding: 14px; color: var(--text-subtle);">Loading models...</div>
-        </div>
-      </div>
-      <div style="display: flex; justify-content: space-between; font-size: 14px; color: var(--text-muted); font-family: var(--mono);">
-        <span>Selected: <strong id="selected-model-text" style="color: var(--text);">anthropic/claude-3.7-sonnet</strong></span>
-        <span id="selected-model-info">200k context</span>
-      </div>
-    </section>
+    <!-- Main Grid: Configurator + Sidebar -->
+    <div class="app-layout">
 
-    <!-- 2. Dynamic Model Parameters -->
-    <section>
-      <h2>2. Model Parameters</h2>
+      <!-- Left / Main Column -->
+      <div class="main-col">
 
-      <div class="params-grid">
-        <!-- Temperature -->
-        <div id="wrapper-temp">
-          <label>
-            <span>Temperature</span>
-            <span id="lbl-temp-note" class="param-note"><span id="lbl-temp">0.7</span></span>
-          </label>
-          <input type="range" id="input-temp" min="0" max="2" step="0.05" value="0.7">
-        </div>
+        <!-- 1. Model Selection -->
+        <section>
+          <h2>1. Choose Model</h2>
+          <div class="model-selector">
+            <input type="text" id="model-search" placeholder="Filter models by name or provider (e.g. claude, gpt-4o, deepseek)..." autocomplete="off">
+            <div class="model-list-box" id="models-list">
+              <div style="padding: 14px; color: var(--text-subtle);">Loading models...</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px; color: var(--text-muted); font-family: var(--mono);">
+            <span>Selected: <strong id="selected-model-text" style="color: var(--text);">anthropic/claude-3.7-sonnet</strong></span>
+            <span id="selected-model-info">200k context</span>
+          </div>
+        </section>
 
-        <!-- Top P -->
-        <div id="wrapper-topp">
-          <label>
-            <span>Top P</span>
-            <span id="lbl-topp-note" class="param-note"><span id="lbl-topp">1.0</span></span>
-          </label>
-          <input type="range" id="input-topp" min="0" max="1" step="0.05" value="1.0">
-        </div>
+        <!-- 2. Dynamic Model Parameters -->
+        <section>
+          <h2>2. Model Parameters</h2>
 
-        <!-- Max Output Tokens (Jumps automatically to model limit) -->
-        <div id="wrapper-maxtok">
-          <label>
-            <span>Max Output Tokens</span>
-            <span id="lbl-maxtok-limit" class="param-note note-supported">(max: 8,192)</span>
-          </label>
-          <input type="number" id="input-maxtok" min="1" max="8192" step="256" value="8192">
-        </div>
+          <div class="params-grid">
+            <!-- Temperature -->
+            <div id="wrapper-temp">
+              <label>
+                <span>Temperature</span>
+                <span id="lbl-temp-note" class="param-note"><span id="lbl-temp">0.7</span></span>
+              </label>
+              <input type="range" id="input-temp" min="0" max="2" step="0.05" value="0.7">
+            </div>
 
-        <!-- Reasoning Effort (Disabled if not supported) -->
-        <div id="wrapper-reasoning">
-          <label>
-            <span>Reasoning Effort</span>
-            <span id="lbl-reasoning-note" class="param-note note-reasoning">Supported</span>
-          </label>
-          <select id="input-reasoning">
-            <option value="none">Default (None)</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High (Deep Reason)</option>
-          </select>
-        </div>
-      </div>
+            <!-- Top P -->
+            <div id="wrapper-topp">
+              <label>
+                <span>Top P</span>
+                <span id="lbl-topp-note" class="param-note"><span id="lbl-topp">1.0</span></span>
+              </label>
+              <input type="range" id="input-topp" min="0" max="1" step="0.05" value="1.0">
+            </div>
 
-      <!-- Dynamic Provider Order Preference -->
-      <div class="provider-container">
-        <label>
-          <span>Provider Order Preference</span>
-          <span id="lbl-providers-count" class="param-note" style="color:var(--text-subtle);">Fetching supported providers...</span>
-        </label>
-        
-        <div class="provider-add-row">
-          <select id="provider-select">
-            <option value="">-- Add a Supported Provider --</option>
-          </select>
-          <button type="button" id="btn-add-provider" onclick="addProvider()">+ Add</button>
-        </div>
+            <!-- Max Output Tokens (Jumps automatically to model limit) -->
+            <div id="wrapper-maxtok">
+              <label>
+                <span>Max Output Tokens</span>
+                <span id="lbl-maxtok-limit" class="param-note note-supported">(max: 8,192)</span>
+              </label>
+              <input type="number" id="input-maxtok" min="1" max="8192" step="256" value="8192">
+            </div>
 
-        <!-- Drag-and-drop provider priority list -->
-        <div class="provider-list" id="provider-list-items">
-          <!-- Populated dynamically -->
-        </div>
-      </div>
-    </section>
+            <!-- Reasoning Effort (Disabled if not supported) -->
+            <div id="wrapper-reasoning">
+              <label>
+                <span>Reasoning Effort</span>
+                <span id="lbl-reasoning-note" class="param-note note-reasoning">Supported</span>
+              </label>
+              <select id="input-reasoning">
+                <option value="none">Default (None)</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High (Deep Reason)</option>
+              </select>
+            </div>
+          </div>
 
-    <!-- 3. Generated URLs -->
-    <section>
-      <h2>3. Generated Endpoints</h2>
+          <!-- Dynamic Provider Order Preference -->
+          <div class="provider-container">
+            <label>
+              <span>Provider Order Preference</span>
+              <span id="lbl-providers-count" class="param-note" style="color:var(--text-subtle);">Fetching supported providers...</span>
+            </label>
+            
+            <div class="provider-add-row">
+              <select id="provider-select">
+                <option value="">-- Add a Supported Provider --</option>
+              </select>
+              <button type="button" id="btn-add-provider" onclick="addProvider()">+ Add</button>
+            </div>
 
-      <div class="endpoint-item">
-        <label>Path-Based Base URL (OpenAI SDK / Cursor / Aider / Continue)</label>
-        <div class="endpoint-row">
-          <div class="code-box" id="path-url">http://localhost:18080/p/anthropic%2Fclaude-3.7-sonnet/v1</div>
-          <button onclick="copyElement('path-url')">Copy</button>
-        </div>
-      </div>
+            <!-- Drag-and-drop provider priority list -->
+            <div class="provider-list" id="provider-list-items">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </section>
 
-      <div class="endpoint-item">
-        <label>Query-String Base URL</label>
-        <div class="endpoint-row">
-          <div class="code-box" id="query-url">http://localhost:18080/v1?model=anthropic%2Fclaude-3.7-sonnet&temperature=0.7</div>
-          <button onclick="copyElement('query-url')">Copy</button>
-        </div>
-      </div>
-    </section>
+        <!-- 3. Generated URLs (Vivid Neon Blue / Cyan Bold) -->
+        <section>
+          <h2>3. Generated Endpoints</h2>
 
-    <!-- 4. Saved Named Presets -->
-    <section>
-      <div style="display: flex; justify-content: space-between; align-items: baseline;">
-        <h2>4. Saved Presets</h2>
-        <span style="font-size: 13px; color: var(--text-subtle);">Stored in browser localStorage</span>
-      </div>
+          <div class="endpoint-item">
+            <label style="color: #93c5fd; font-weight: 600;">Path-Based Base URL (OpenAI SDK / Cursor / Aider / Continue)</label>
+            <div class="endpoint-row">
+              <div class="code-box-vivid" id="path-url">http://localhost:18080/p/anthropic%2Fclaude-3.7-sonnet/v1</div>
+              <button class="btn-copy-vivid" onclick="copyElement('path-url')">Copy URL</button>
+            </div>
+          </div>
 
-      <div class="presets-container">
-        <div class="presets-save-row">
-          <input type="text" id="preset-name-input" placeholder="Name this configuration (e.g. Claude 3.7 Coding, DeepSeek R1 Fast)...">
-          <button type="button" onclick="saveCurrentPreset()">+ Save Preset</button>
-        </div>
+          <div class="endpoint-item">
+            <label style="color: #93c5fd; font-weight: 600;">Query-String Base URL</label>
+            <div class="endpoint-row">
+              <div class="code-box-vivid" id="query-url">http://localhost:18080/v1?model=anthropic%2Fclaude-3.7-sonnet&temperature=0.7</div>
+              <button class="btn-copy-vivid" onclick="copyElement('query-url')">Copy URL</button>
+            </div>
+          </div>
+        </section>
 
-        <div class="presets-list" id="presets-list-items">
-          <!-- Populated dynamically -->
-        </div>
-      </div>
-    </section>
+        <!-- 4. Test Console -->
+        <section>
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <h2>4. Live Test Endpoint</h2>
+            <span id="test-time" style="font-family: var(--mono); font-size: 13px; color: var(--text-muted);"></span>
+          </div>
 
-    <!-- 5. Test Console -->
-    <section>
-      <div style="display: flex; justify-content: space-between; align-items: baseline;">
-        <h2>5. Live Test Endpoint</h2>
-        <span id="test-time" style="font-family: var(--mono); font-size: 13px; color: var(--text-muted);"></span>
+          <div class="test-box">
+            <input type="text" id="test-input" value="Explain quantum superposition in one clear sentence.">
+            <button id="test-btn" onclick="sendTest()">Send</button>
+          </div>
+
+          <div class="test-output" id="test-output">Ready. Click Send to test proxy streaming.</div>
+        </section>
+
       </div>
 
-      <div class="test-box">
-        <input type="text" id="test-input" value="Explain quantum superposition in one clear sentence.">
-        <button id="test-btn" onclick="sendTest()">Send</button>
-      </div>
+      <!-- Right Column / Sidebar: Saved Presets Manager -->
+      <aside class="sidebar-col">
+        <div class="sidebar-header">
+          <h2>Saved Presets</h2>
+          <span class="badge" id="preset-count-badge">0 saved</span>
+        </div>
 
-      <div class="test-output" id="test-output">Ready. Click Send to test proxy streaming.</div>
-    </section>
+        <div class="presets-container">
+          <div class="presets-save-row">
+            <input type="text" id="preset-name-input" placeholder="Preset name (e.g. Claude Coding)...">
+            <button type="button" onclick="saveCurrentPreset()">+ Save Current Config</button>
+          </div>
+
+          <div class="presets-list" id="presets-list-items">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </aside>
+
+    </div>
 
   </div>
 
@@ -1774,10 +1870,15 @@ async def web_dashboard(request: Request):
 
     function renderPresetsList() {
       const container = document.getElementById('presets-list-items');
+      const badge = document.getElementById('preset-count-badge');
       const presets = getSavedPresets();
 
+      if (badge) {
+        badge.textContent = `${presets.length} saved`;
+      }
+
       if (!presets.length) {
-        container.innerHTML = '<div style="font-size:13px;color:var(--text-subtle);padding:8px 0;">No saved presets yet. Type a name above and click "+ Save Preset" to bookmark configurations.</div>';
+        container.innerHTML = '<div style="font-size:13px;color:var(--text-subtle);padding:8px 0;">No saved presets yet. Type a name above and click "+ Save Current Config" to bookmark.</div>';
         return;
       }
 
