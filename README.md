@@ -28,9 +28,15 @@ It allows dynamically overriding any model configuration (model slug, temperatur
   - `POST /v1/chat/completions` (and `/p/{model}/v1/chat/completions`)
   - `GET /v1/models`
   - Server-Sent Events (SSE) token streaming (`stream: true`).
-- 🔐 **Flexible Multi-Tier Auth**:
+- 🔐 **Flexible Multi-Tier Auth & Header Forwarding**:
   - Auto-discovers API key from `.env` in project root, `~/.config/openrouter-proxy/.env`, `~/.env`, or shell `OPENROUTER_API_KEY`.
-  - Transparently forwards client-supplied bearer tokens (`sk-or-...`).
+  - Transparently accepts API keys via client headers:
+    - `Authorization: Bearer <key>`
+    - `X-Api-Key: <key>`
+    - `OpenRouter-Api-Key: <key>`
+    - `api-key: <key>`
+  - Transparently accepts API keys via URL parameters: `?api_key=...` or `?key=...`
+  - Transparently forwards OpenRouter metadata headers (`HTTP-Referer`, `X-Title`).
 
 ---
 

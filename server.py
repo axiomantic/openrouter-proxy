@@ -76,25 +76,56 @@ CACHE_TTL = 300  # 5 minutes
 
 def get_api_key(request: Request) -> str:
     """Extract OpenRouter API key with flexible resolution hierarchy:
-    1. Client Authorization Bearer header if it's an OpenRouter key ('sk-or-...')
-    2. URL query parameter ('api_key' or 'openrouter_api_key')
-    3. Project directory .env / environment variable OPENROUTER_API_KEY
-    4. Global ~/.config/openrouter-proxy/.env or ~/.env
+    1. Custom OpenRouter / API key headers:
+       - 'X-Api-Key' / 'api-key'
+       - 'OpenRouter-Api-Key' / 'x-openrouter-api-key'
+    2. Authorization header:
+       - 'Bearer <token>' (uses token if not a local dummy token like 'sk-proxy-local')
+    3. URL query parameters:
+       - 'api_key', 'openrouter_api_key', or 'key'
+    4. Project directory .env / environment variable OPENROUTER_API_KEY
+    5. Global ~/.config/openrouter-proxy/.env or ~/.env
     """
-    # 1. Check query parameter
-    url_key = request.query_params.get("api_key") or request.query_params.get("openrouter_api_key")
-    if url_key and url_key.startswith("sk-or-"):
-        return url_key
+    # 1. Custom headers
+    for h in ["X-Api-Key", "api-key", "OpenRouter-Api-Key", "x-openrouter-api-key", "x-api-key"]:
+        val = request.headers.get(h)
+        if val and val.strip():
+            val = val.strip()
+            if val.lower() not in ("sk-proxy-local", "none", "dummy", "test"):
+                return val
 
-    # 2. Check Auth Header
+    # 2. Authorization Header
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
-        if token.startswith("sk-or-"):
+        # If client passes a valid token (and not a local dummy placeholder)
+        if token and token.lower() not in ("sk-proxy-local", "none", "dummy", "test", "local") and len(token) > 8:
             return token
+    elif auth_header and not auth_header.startswith("Bearer ") and len(auth_header.strip()) > 8:
+        return auth_header.strip()
 
-    # 3. Fallback to server env key
+    # 3. Query parameters
+    for q_key in ["api_key", "openrouter_api_key", "key"]:
+        url_key = request.query_params.get(q_key)
+        if url_key and url_key.strip():
+            url_key = url_key.strip()
+            if url_key.lower() not in ("sk-proxy-local", "none", "dummy", "test"):
+                return url_key
+
+    # 4. Fallback to server environment key
     return os.getenv("OPENROUTER_API_KEY", OPENROUTER_API_KEY)
+
+
+def extract_openrouter_headers(request: Request) -> Dict[str, str]:
+    """Forward optional OpenRouter attribution and ranking headers."""
+    extra = {}
+    referer = request.headers.get("HTTP-Referer") or request.headers.get("Referer")
+    if referer:
+        extra["HTTP-Referer"] = referer
+    title = request.headers.get("X-Title") or request.headers.get("x-title")
+    if title:
+        extra["X-Title"] = title
+    return extra
 
 
 def decode_config_str(config_str: str) -> Dict[str, Any]:
@@ -366,6 +397,11 @@ async def handle_proxy_completion(
         "api_key": api_key,
         "api_base": OPENROUTER_BASE_URL,
     }
+
+    # Forward custom OpenRouter headers (HTTP-Referer, X-Title)
+    or_headers = extract_openrouter_headers(request)
+    if or_headers:
+        completion_kwargs["extra_headers"] = or_headers
 
     # Handle standard parameters with URL override precedence
     for param in ["temperature", "top_p", "max_tokens", "presence_penalty", "frequency_penalty", "seed"]:
