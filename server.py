@@ -60,7 +60,7 @@ app.add_middleware(
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_PORT = int(os.getenv("PORT", "8080"))
+DEFAULT_PORT = int(os.getenv("PORT", "18080"))
 DEFAULT_HOST = os.getenv("HOST", "0.0.0.0")
 
 # Cache for OpenRouter models list
@@ -702,7 +702,7 @@ async def web_dashboard(request: Request):
             </button>
           </div>
           <div class="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-200 break-all select-all flex items-center justify-between" id="path-base-url">
-            http://localhost:8080/p/anthropic:claude-3.7-sonnet/v1
+            http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1
           </div>
           <span class="text-[11px] text-slate-500">Paste as <code class="text-slate-400">OPENAI_BASE_URL</code> or <code class="text-slate-400">baseURL</code></span>
         </div>
@@ -716,7 +716,7 @@ async def web_dashboard(request: Request):
             </button>
           </div>
           <div class="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-200 break-all select-all" id="query-base-url">
-            http://localhost:8080/v1?model=anthropic/claude-3.7-sonnet&temperature=0.7
+            http://localhost:18080/v1?model=anthropic/claude-3.7-sonnet&temperature=0.7
           </div>
         </div>
 
@@ -729,7 +729,7 @@ async def web_dashboard(request: Request):
             </button>
           </div>
           <div class="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-400 break-all select-all" id="completions-endpoint-url">
-            http://localhost:8080/p/anthropic:claude-3.7-sonnet/v1/chat/completions
+            http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1/chat/completions
           </div>
         </div>
 
@@ -1250,7 +1250,7 @@ aider --openai-api-base="${origin}/p/${modelSlug}/v1"`;
 
 
 def main():
-    port = int(os.getenv("PORT", "8080"))
+    port = int(os.getenv("PORT", "18080"))
     host = os.getenv("HOST", "0.0.0.0")
     print(f"🚀 Starting OpenRouter LiteLLM Proxy on http://{host}:{port}")
     print(f"🌐 Web UI dashboard available at http://localhost:{port}")

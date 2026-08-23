@@ -15,10 +15,10 @@ It allows dynamically overriding any model configuration (model slug, temperatur
 
 - 🔄 **macOS `launchd` Service**: Runs unobtrusively in the background, starts on login, automatically restarts if stopped.
 - 🔀 **Dynamic URL-Based Configuration**:
-  - **Path-Based Base URLs**: `http://localhost:8080/p/anthropic:claude-3.7-sonnet/v1`
-  - **Query-String Overrides**: `http://localhost:8080/v1?model=deepseek/deepseek-r1&temperature=0.6&max_tokens=4096&reasoning_effort=high`
-  - **Base64 Config Payloads**: `http://localhost:8080/cfg/<base64_json>/v1`
-- 🖥️ **Interactive Web UI Dashboard** (`http://localhost:8080`):
+  - **Path-Based Base URLs**: `http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1`
+  - **Query-String Overrides**: `http://localhost:18080/v1?model=deepseek/deepseek-r1&temperature=0.6&max_tokens=4096&reasoning_effort=high`
+  - **Base64 Config Payloads**: `http://localhost:18080/cfg/<base64_json>/v1`
+- 🖥️ **Interactive Web UI Dashboard** (`http://localhost:18080`):
   - Live model browser dynamically queried from the OpenRouter model registry.
   - Search and filter by provider, reasoning (CoT), multimodal/vision, free tiers, and context length.
   - Interactive sliders for temperature, top-p, max tokens, reasoning effort (low/medium/high), system prompt injection, and provider ordering.
@@ -49,7 +49,7 @@ cp .env.example .env
 Edit `.env` to set your OpenRouter API key:
 ```env
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
-PORT=8080
+PORT=18080
 HOST=0.0.0.0
 ```
 
@@ -69,7 +69,7 @@ This will:
 ### 3. Open the Dashboard
 
 Navigate to:
-👉 **[http://localhost:8080](http://localhost:8080)**
+👉 **[http://localhost:18080](http://localhost:18080)**
 
 ---
 
@@ -99,17 +99,17 @@ Logs are maintained at:
 Use colons (`:`) in place of slashes (`/`) for model names to keep URLs clean:
 
 ```text
-http://localhost:8080/p/anthropic:claude-3.7-sonnet/v1
-http://localhost:8080/p/deepseek:deepseek-r1/v1
-http://localhost:8080/p/meta-llama:llama-3.3-70b-instruct/v1
-http://localhost:8080/p/google:gemini-2.5-pro/v1
+http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1
+http://localhost:18080/p/deepseek:deepseek-r1/v1
+http://localhost:18080/p/meta-llama:llama-3.3-70b-instruct/v1
+http://localhost:18080/p/google:gemini-2.5-pro/v1
 ```
 
 ### 2. Query Parameters
 Append parameters to any endpoint to override defaults:
 
 ```text
-http://localhost:8080/v1/chat/completions?model=anthropic/claude-3.7-sonnet&temperature=0.5&max_tokens=4096&reasoning_effort=high
+http://localhost:18080/v1/chat/completions?model=anthropic/claude-3.7-sonnet&temperature=0.5&max_tokens=4096&reasoning_effort=high
 ```
 
 | Parameter | Type | Description |
@@ -134,7 +134,7 @@ from openai import OpenAI
 
 # Target any model dynamically through base_url
 client = OpenAI(
-    base_url="http://localhost:8080/p/anthropic:claude-3.7-sonnet/v1",
+    base_url="http://localhost:18080/p/anthropic:claude-3.7-sonnet/v1",
     api_key="sk-proxy-local"  # Server uses OPENROUTER_API_KEY from .env
 )
 
@@ -151,7 +151,7 @@ for chunk in response:
 ### cURL
 
 ```bash
-curl http://localhost:8080/p/deepseek:deepseek-r1/v1/chat/completions \
+curl http://localhost:18080/p/deepseek:deepseek-r1/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-proxy-local" \
   -d '{

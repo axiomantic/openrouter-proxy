@@ -45,7 +45,7 @@ else
 fi
 
 # Load PORT and HOST defaults from .env
-PORT="8080"
+PORT="18080"
 HOST="0.0.0.0"
 if [ -f "${ENV_FILE}" ]; then
     ENV_PORT=$(grep -E "^PORT=" "${ENV_FILE}" | cut -d '=' -f2- | tr -d ' "')

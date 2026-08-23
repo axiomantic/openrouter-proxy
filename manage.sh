@@ -6,7 +6,7 @@ PLIST_DEST="${HOME}/Library/LaunchAgents/${SERVICE_LABEL}.plist"
 LOG_DIR="${HOME}/Library/Logs/openrouter-proxy"
 ENV_FILE="${SCRIPT_DIR}/.env"
 
-PORT="8080"
+PORT="18080"
 if [ -f "${ENV_FILE}" ]; then
     ENV_PORT=$(grep -E "^PORT=" "${ENV_FILE}" | cut -d '=' -f2- | tr -d ' "')
     [ -n "${ENV_PORT}" ] && PORT="${ENV_PORT}"
