@@ -1122,8 +1122,11 @@ async def web_dashboard(request: Request):
       
       if (isReasoning) {
         reasoningSelect.disabled = false;
+        if (reasoningSelect.value === 'none') {
+          reasoningSelect.value = 'medium'; // Auto-default to medium for reasoning models
+        }
         reasoningNote.className = 'param-note note-reasoning';
-        reasoningNote.textContent = 'Supported';
+        reasoningNote.textContent = 'Supported (Default: Medium)';
       } else {
         reasoningSelect.disabled = true;
         reasoningSelect.value = 'none';
